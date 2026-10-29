@@ -14,16 +14,32 @@ const orderItemController = {
 
       const result = await OrderItem.addItems(order_id, items);
 
-      res.status(201).json({
+      return res.status(201).json({
         success: true,
         message: "Items added successfully.",
         ...result,
       });
     } catch (error) {
       console.error("Error adding items:", error);
-      res.status(500).json({
+      return res.status(error.status || 500).json({
         success: false,
-        message: "Failed to add items to the order.",
+        message: error.message || "Failed to add items to the order.",
+      });
+    }
+  },
+
+  getByOrder: async (req, res) => {
+    try {
+      const { order_id } = req.params;
+      const items = await OrderItem.getByOrder(order_id);
+      return res.status(200).json({
+        success: true,
+        items: items || [],
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching order items",
         error: error.message,
       });
     }
@@ -31,22 +47,40 @@ const orderItemController = {
 
   updateItem: async (req, res) => {
     const item_id = req.params.id;
-    const updatedData = req.body; 
+    const updatedData = req.body;
 
     try {
       const result = await OrderItem.updateItem(item_id, updatedData);
 
-      res.json({
+      return res.status(200).json({
         success: true,
         message: "Order item updated successfully",
         ...result,
       });
     } catch (error) {
       console.error("Error updating item:", error);
-      res.status(500).json({
+      return res.status(error.status || 500).json({
         success: false,
-        message: "Failed to update order item.",
-        error: error.message,
+        message: error.message || "Failed to update order item.",
+      });
+    }
+  },
+
+  deleteItem: async (req, res) => {
+    try {
+      const item_id = req.params.id;
+      const result = await OrderItem.deleteItem(item_id);
+
+      return res.status(200).json({
+        success: true,
+        message: "Order item deleted successfully.",
+        ...result,
+      });
+    } catch (error) {
+      console.error("Error deleting item:", error);
+      return res.status(error.status || 500).json({
+        success: false,
+        message: error.message || "Failed to delete order item.",
       });
     }
   },

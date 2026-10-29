@@ -71,9 +71,8 @@ router.get("/status/:status", orderController.getByStatus);
  *         required: true
  *         schema:
  *           type: string
- *           enum: [In-Store Pickup, Drop-off]
+ *           enum: [Pickup, Delivery, In-store Pickup, Drop-off]
  *         description: Delivery method to filter by
- *         example: In-Store Pickup
  *     responses:
  *       200:
  *         description: Orders filtered by delivery method
@@ -84,17 +83,10 @@ router.get("/status/:status", orderController.getByStatus);
  *               properties:
  *                 success:
  *                   type: boolean
- *                   example: true
  *                 orders:
  *                   type: array
  *                   items:
  *                     $ref: '#/components/schemas/Order'
- *       400:
- *         description: Invalid delivery method
- *       404:
- *         description: No orders found for this delivery method
- *       500:
- *         description: Server error
  */
 router.get(
   "/delivery/:delivery_methods",
@@ -135,7 +127,7 @@ router.get("/name/:name", orderController.getByName);
  * @openapi
  * /api/orders/{id}:
  *   get:
- *     summary: Get an order by ID
+ *     summary: Get an order by ID (with items and payment summary)
  *     tags:
  *       - Orders
  *     parameters:
@@ -180,6 +172,9 @@ router.get("/:id", orderController.getById);
  *                 type: integer
  *               service_id:
  *                 type: integer
+ *               delivery_methods:
+ *                 type: string
+ *                 example: Pickup
  *     responses:
  *       201:
  *         description: Order created
@@ -239,7 +234,6 @@ router.put("/:id/status", orderController.updateStatus);
  * /api/orders/delivery/{id}:
  *   put:
  *     summary: Update order delivery method
- *     description: Updates the delivery method for an existing order, use ["In-store Pickup or Drop-off"]
  *     tags:
  *       - Orders
  *     parameters:
@@ -248,8 +242,6 @@ router.put("/:id/status", orderController.updateStatus);
  *         required: true
  *         schema:
  *           type: integer
- *         description: The order ID
- *         example: 1
  *     requestBody:
  *       required: true
  *       content:
@@ -261,30 +253,34 @@ router.put("/:id/status", orderController.updateStatus);
  *             properties:
  *               delivery_methods:
  *                 type: string
- *                 enum: ["In-store Pickup", "Drop-off"]
- *                 example: "In-store Pickup"
  *     responses:
  *       200:
  *         description: Delivery method successfully updated
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Delivery method updated
- *       400:
- *         description: Invalid delivery method
  *       404:
  *         description: Order not found
- *       500:
- *         description: Server error
  */
 router.put("/delivery/:id", orderController.updateDelivery);
+
+/**
+ * @openapi
+ * /api/orders/{id}:
+ *   delete:
+ *     summary: Delete an order by ID
+ *     tags:
+ *       - Orders
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Order deleted successfully
+ *       404:
+ *         description: Order not found
+ */
+router.delete("/:id", orderController.delete);
 
 export default router;
 
@@ -309,9 +305,6 @@ export default router;
  *           type: number
  *         delivery_methods:
  *           type: string
- *           enum:
- *             - In-store Pickup
- *             - Drop-off
  *         created_at:
  *           type: string
  *           format: date-time

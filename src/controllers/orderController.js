@@ -1,55 +1,74 @@
 import Order from "../models/orderModel.js";
 import OrderItem from "../models/orderItemModel.js";
+import Payment from "../models/paymentModel.js";
 
 const orderController = {
   getAll: async (req, res) => {
     try {
       const orders = await Order.getAll();
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
-        orders: orders,
+        orders: orders || [],
       });
     } catch (err) {
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         message: "Error fetching orders",
         error: err.message,
       });
     }
   },
+
   getById: async (req, res) => {
     try {
-      const order = await Order.getById(req.params.id);
+      const { id } = req.params;
+      const order = await Order.getById(id);
 
       if (!order) {
         return res.status(404).json({
           success: false,
           message: "Order not found",
-          error: error.message,
         });
       }
 
-      const items = await OrderItem.getByOrder(req.params.id);
-      if (!items) {
-        return res.status(404).json({
-          message: "Order_Item not found",
-          error: error.message,
-        });
+      const [items, payments, totalPaid] = await Promise.all([
+        OrderItem.getByOrder(id),
+        Payment.getByOrderId(id).catch(() => []),
+        Payment.getTotalPaid(id).catch(() => 0),
+      ]);
+
+      const totalAmount = parseFloat(order.total_amount || 0);
+      const balance = Math.max(0, totalAmount - totalPaid);
+      let paymentStatus = "Unpaid";
+      if (totalPaid >= totalAmount && totalAmount > 0) {
+        paymentStatus = "Fully Paid";
+      } else if (totalPaid > 0) {
+        paymentStatus = "Partially Paid";
       }
 
-      res.status(200).json({
+      const enrichedOrder = {
+        ...order,
+        total_paid: totalPaid,
+        balance_remaining: balance,
+        payment_status: paymentStatus,
+      };
+
+      return res.status(200).json({
         success: true,
-        order: order,
-        items: items,
+        order: enrichedOrder,
+        data: enrichedOrder,
+        items: items || [],
+        payments: payments || [],
       });
     } catch (error) {
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
-        message: `Error fetching ${req.params.id}`,
+        message: `Error fetching order ${req.params.id}`,
         error: error.message,
       });
     }
   },
+
   getByStatus: async (req, res) => {
     try {
       const { status } = req.params;
@@ -63,21 +82,14 @@ const orderController = {
 
       const orders = await Order.getByStatus(status);
 
-      if (!orders || orders.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: `No orders found with status: ${status}`,
-        });
-      }
-
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         status: status,
-        total: orders.length,
-        orders: orders,
+        total: orders ? orders.length : 0,
+        orders: orders || [],
       });
     } catch (error) {
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         message: "Error fetching orders by status",
         error: error.message,
@@ -98,21 +110,14 @@ const orderController = {
 
       const orders = await Order.getByName(name);
 
-      if (!orders || orders.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: `No orders found for customer name: ${name}`,
-        });
-      }
-
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         name: name,
-        total: orders.length,
-        orders: orders,
+        total: orders ? orders.length : 0,
+        orders: orders || [],
       });
     } catch (error) {
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         message: "Error fetching orders by name",
         error: error.message,
@@ -122,41 +127,43 @@ const orderController = {
 
   create: async (req, res) => {
     try {
-      const { customer_id, service_id } = req.body;
+      const { customer_id, service_id, delivery_methods } = req.body;
 
       if (!customer_id || !service_id) {
         return res.status(400).json({
           success: false,
           message: "All fields (customer_id, service_id) are required",
-          error: error.message,
         });
       }
+
       const newOrder = await Order.create({
         customer_id,
         service_id,
+        delivery_methods,
       });
 
-      res.status(201).json({
+      return res.status(201).json({
         success: true,
         message: "Order created successfully",
         order_id: newOrder.id,
       });
     } catch (error) {
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         message: "Error creating order",
         error: error.message,
       });
     }
   },
+
   updateStatus: async (req, res) => {
     try {
       const { status } = req.body;
-      const id = req.params.id; // id ng umorder
+      const id = req.params.id;
 
-      const existingId = await Order.getById(id);
+      const existingOrder = await Order.getById(id);
 
-      if (!existingId) {
+      if (!existingOrder) {
         return res.status(404).json({
           success: false,
           message: `Order with id ${id} not found`,
@@ -172,12 +179,14 @@ const orderController = {
 
       await Order.updateStatus(id, status);
 
-      res.status(200).json({
-        sucess: true,
+      return res.status(200).json({
+        success: true,
         message: "Status updated",
+        order_id: id,
+        status,
       });
     } catch (error) {
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         message: `Error updating the status of order ${req.params.id}`,
         error: error.message,
@@ -191,15 +200,16 @@ const orderController = {
 
       const orders = await Order.getByDeliveryMethod(delivery_methods);
 
-      if (!orders || orders.length === 0) {
-        return res
-          .status(404)
-          .json({ message: "No orders found for this delivery method" });
-      }
-
-      res.json(orders);
+      return res.status(200).json({
+        success: true,
+        orders: orders || [],
+      });
     } catch (error) {
-      res.status(500).json({ message: "Server error", error });
+      return res.status(500).json({
+        success: false,
+        message: "Server error",
+        error: error.message,
+      });
     }
   },
 
@@ -226,16 +236,42 @@ const orderController = {
 
       await Order.updateDelivery(id, delivery_methods);
 
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         message: "Delivery method updated successfully",
         order_id: id,
         delivery_methods,
       });
     } catch (error) {
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         message: `Error updating delivery method for order ${req.params.id}`,
+        error: error.message,
+      });
+    }
+  },
+
+  delete: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existingOrder = await Order.getById(id);
+
+      if (!existingOrder) {
+        return res.status(404).json({
+          success: false,
+          message: `Order #${id} not found`,
+        });
+      }
+
+      await Order.delete(id);
+      return res.status(200).json({
+        success: true,
+        message: `Order #${id} deleted successfully.`,
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: `Error deleting order #${req.params.id}`,
         error: error.message,
       });
     }

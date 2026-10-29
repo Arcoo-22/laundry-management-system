@@ -29,6 +29,46 @@ router.get("/", paymentController.getAll);
 
 /**
  * @openapi
+ * /api/payments/order/{orderId}:
+ *   get:
+ *     summary: Get payments for an order
+ *     tags:
+ *       - Payments
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Array of payments for this order
+ */
+router.get("/order/:orderId", paymentController.getByOrder);
+
+/**
+ * @openapi
+ * /api/payments/{id}:
+ *   get:
+ *     summary: Get a payment record by payment ID
+ *     tags:
+ *       - Payments
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Payment object
+ *       404:
+ *         description: Payment not found
+ */
+router.get("/:id", paymentController.getById);
+
+/**
+ * @openapi
  * /api/payments:
  *   post:
  *     summary: Create a new payment for an order
@@ -42,8 +82,8 @@ router.get("/", paymentController.getAll);
  *             type: object
  *             required:
  *               - order_id
- *               - amount
- *               - method
+ *               - amount_paid
+ *               - payment_mode
  *             properties:
  *               order_id:
  *                 type: integer
@@ -65,58 +105,6 @@ router.get("/", paymentController.getAll);
  *                   type: integer
  */
 router.post("/", paymentController.create);
-
-/**
- * @openapi
- * /api/payments/{orderId}:
- *   put:
- *     summary: Update payment status for an order
- *     description: Updates the payment status of an existing payment record
- *     tags:
- *       - Payments
- *     parameters:
- *       - in: path
- *         name: orderId
- *         required: true
- *         schema:
- *           type: integer
- *         description: The order ID associated with the payment
- *         example: 1
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - newStatus
- *             properties:
- *               newStatus:
- *                 type: string
- *                 enum: [pending, completed, failed, refunded]
- *                 example: completed
- *     responses:
- *       200:
- *         description: Payment status successfully updated
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Payment status updated
- *       400:
- *         description: Invalid status value
- *       404:
- *         description: Payment or order not found
- *       500:
- *         description: Server error
- */
-router.put("/:orderId", paymentController.updatePaymentStatus);
 
 /**
  * @openapi
@@ -173,6 +161,58 @@ router.put("/:orderId", paymentController.updatePaymentStatus);
  *         description: Server error
  */
 router.put("/complete/:orderId", paymentController.completePayment);
+
+/**
+ * @openapi
+ * /api/payments/{orderId}:
+ *   put:
+ *     summary: Update payment status for an order
+ *     description: Updates the payment status of an existing payment record
+ *     tags:
+ *       - Payments
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The order ID associated with the payment
+ *         example: 1
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - newStatus
+ *             properties:
+ *               newStatus:
+ *                 type: string
+ *                 enum: [pending, completed, failed, refunded]
+ *                 example: completed
+ *     responses:
+ *       200:
+ *         description: Payment status successfully updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Payment status updated
+ *       400:
+ *         description: Invalid status value
+ *       404:
+ *         description: Payment or order not found
+ *       500:
+ *         description: Server error
+ */
+router.put("/:orderId", paymentController.updatePaymentStatus);
 
 export default router;
 

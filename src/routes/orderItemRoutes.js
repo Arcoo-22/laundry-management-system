@@ -53,6 +53,25 @@ router.post("/", orderItemController.addItems);
 
 /**
  * @openapi
+ * /api/order-items/order/{order_id}:
+ *   get:
+ *     summary: Get all items for an order
+ *     tags:
+ *       - Order Items
+ *     parameters:
+ *       - in: path
+ *         name: order_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Items list for the order
+ */
+router.get("/order/:order_id", orderItemController.getByOrder);
+
+/**
+ * @openapi
  * /api/order-items/{id}:
  *   put:
  *     summary: Update an existing order item
@@ -79,19 +98,29 @@ router.post("/", orderItemController.addItems);
  *     responses:
  *       200:
  *         description: Order item updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 totalWeight:
- *                   type: number
- *                 totalAmount:
- *                   type: number
  */
 router.put("/:id", orderItemController.updateItem);
+
+/**
+ * @openapi
+ * /api/order-items/{id}:
+ *   delete:
+ *     summary: Delete an order item and recalculate order totals
+ *     tags:
+ *       - Order Items
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Item deleted successfully
+ *       404:
+ *         description: Item not found
+ */
+router.delete("/:id", orderItemController.deleteItem);
 
 export default router;
 

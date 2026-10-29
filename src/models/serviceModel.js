@@ -3,9 +3,9 @@ import db from "../config/database.js";
 const Service = {
   getAll: () => {
     return new Promise((resolve, reject) => {
-      db.query("SELECT * FROM tbl_services", (err, results) => {
-        if (err) reject(err);
-        resolve(results);
+      db.query("SELECT * FROM tbl_services ORDER BY service_id ASC", (err, results) => {
+        if (err) return reject(err);
+        resolve(results || []);
       });
     });
   },
@@ -16,8 +16,8 @@ const Service = {
         "SELECT * FROM tbl_services WHERE service_id = ?",
         [id],
         (err, results) => {
-          if (err) reject(err);
-          resolve(results[0]);
+          if (err) return reject(err);
+          resolve(results && results.length ? results[0] : null);
         }
       );
     });
@@ -28,11 +28,11 @@ const Service = {
       const query = `
       SELECT * FROM tbl_services 
       WHERE service_name LIKE ?`;
-      const searchTerm = `%${service_name}%`; // allows partial matching
+      const searchTerm = `%${service_name}%`;
 
       db.query(query, [searchTerm], (err, results) => {
-        if (err) reject(err);
-        resolve(results);
+        if (err) return reject(err);
+        resolve(results || []);
       });
     });
   },
@@ -44,10 +44,33 @@ const Service = {
         "INSERT INTO tbl_services (service_name, price_per_kilo, description) VALUES (?, ?, ?)",
         [service_name, price_per_kilo, description],
         (err, results) => {
-          if (err) reject(err);
-          resolve({ id: results.insertId, ...serviceData });
+          if (err) return reject(err);
+          resolve({ id: results.insertId, service_id: results.insertId, ...serviceData });
         }
       );
+    });
+  },
+
+  update: (id, serviceData) => {
+    const { service_name, price_per_kilo, description } = serviceData;
+    return new Promise((resolve, reject) => {
+      db.query(
+        "UPDATE tbl_services SET service_name = ?, price_per_kilo = ?, description = ? WHERE service_id = ?",
+        [service_name, price_per_kilo, description, id],
+        (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        }
+      );
+    });
+  },
+
+  delete: (id) => {
+    return new Promise((resolve, reject) => {
+      db.query("DELETE FROM tbl_services WHERE service_id = ?", [id], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
     });
   },
 };

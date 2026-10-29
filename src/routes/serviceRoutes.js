@@ -125,6 +125,65 @@ router.get("/:id", serviceController.getById);
  */
 router.post("/", serviceController.create);
 
+/**
+ * @openapi
+ * /api/services/{id}:
+ *   put:
+ *     summary: Update an existing service
+ *     tags:
+ *       - Services
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - service_name
+ *               - price_per_kilo
+ *               - description
+ *             properties:
+ *               service_name:
+ *                 type: string
+ *               price_per_kilo:
+ *                 type: number
+ *               description:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Service updated successfully
+ *       404:
+ *         description: Service not found
+ */
+router.put("/:id", serviceController.update);
+
+/**
+ * @openapi
+ * /api/services/{id}:
+ *   delete:
+ *     summary: Delete a service by ID
+ *     tags:
+ *       - Services
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Service deleted successfully
+ *       404:
+ *         description: Service not found
+ */
+router.delete("/:id", serviceController.delete);
+
 export default router;
 
 /**

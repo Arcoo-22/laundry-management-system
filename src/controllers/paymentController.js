@@ -5,15 +5,58 @@ const paymentController = {
   getAll: async (req, res) => {
     try {
       const payments = await Payment.getAll();
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
-        customers: payments,
+        payments: payments || [],
       });
     } catch (err) {
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
-        message: "Error fetching customers",
+        message: "Error fetching payments",
         error: err.message,
+      });
+    }
+  },
+
+  getById: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const payment = await Payment.getById(id);
+
+      if (!payment) {
+        return res.status(404).json({
+          success: false,
+          message: `Payment #${id} not found.`,
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        payment: payment,
+        data: payment,
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching payment",
+        error: error.message,
+      });
+    }
+  },
+
+  getByOrder: async (req, res) => {
+    try {
+      const { orderId } = req.params;
+      const payments = await Payment.getByOrderId(orderId);
+      return res.status(200).json({
+        success: true,
+        payments: payments || [],
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching order payments",
+        error: error.message,
       });
     }
   },
@@ -22,31 +65,44 @@ const paymentController = {
     try {
       const { order_id, amount_paid, payment_mode } = req.body;
 
-      if (!order_id || !amount_paid || !payment_mode) {
+      if (!order_id || amount_paid === undefined || !payment_mode) {
         return res.status(400).json({
           success: false,
-          message:
-            "All fields (order_id, amount_paid, payment_mode) are required",
+          message: "All fields (order_id, amount_paid, payment_mode) are required",
         });
       }
 
-      const order = await Order.getById(order_id); //get the order total amnt
-
-      if (!order || !order.total_amount) {
+      const parsedAmount = parseFloat(amount_paid);
+      if (isNaN(parsedAmount) || parsedAmount <= 0) {
         return res.status(400).json({
           success: false,
-          message: "Total amount of order not found.",
+          message: "amount_paid must be a positive number",
         });
       }
 
-      const total = parseFloat(order.total_amount);
-      const previousPayments = await Payment.getTotalPaid(order_id); //compute full amnt
-      const totalPaid = previousPayments + parseFloat(amount_paid);
+      const order = await Order.getById(order_id);
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: `Order ${order_id} not found.`,
+        });
+      }
+
+      const total = parseFloat(order.total_amount || 0);
+      if (total <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Total amount of order is zero or items have not been added yet.",
+        });
+      }
+
+      const previousPayments = await Payment.getTotalPaid(order_id);
+      const totalPaid = previousPayments + parsedAmount;
       const newBalance = total - totalPaid;
-      const balanceForDB = newBalance > 0 ? newBalance : 0; //if greater than 0 ung balance, un ung new balance
+      const balanceForDB = newBalance > 0 ? newBalance : 0;
 
       let paymentStatus;
-
       if (newBalance <= 0) {
         paymentStatus = "Fully Paid";
       } else if (totalPaid > 0) {
@@ -57,25 +113,25 @@ const paymentController = {
 
       const newPayment = await Payment.create({
         order_id,
-        amount_paid,
+        amount_paid: parsedAmount,
         payment_mode,
         payment_balance: balanceForDB,
         payment_status: paymentStatus,
       });
 
-      //update status
       if (paymentStatus === "Fully Paid") {
         await Order.updateStatus(order_id, "Processing");
       }
 
-      res.status(201).json({
+      return res.status(201).json({
         success: true,
         message: "Payment recorded successfully.",
         payment: newPayment,
         balance_remaining: balanceForDB,
+        payment_status: paymentStatus,
       });
     } catch (error) {
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         message: "Error creating payment",
         error: error.message,
@@ -97,21 +153,21 @@ const paymentController = {
 
       const result = await Payment.updatePaymentStatus(orderId, newStatus);
 
-      if (result.affectedRows === 0) {
+      if (!result || result.affectedRows === 0) {
         return res.status(404).json({
           success: false,
-          message: `Payment record for Order ID ${orderId} not found or status is already '${newStatus}'.`,
+          message: `Payment record for Order ID ${orderId} not found.`,
         });
       }
 
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         message: `Payment status for Order ID ${orderId} updated to '${newStatus}'.`,
         order_id: orderId,
         payment_status: newStatus,
       });
     } catch (error) {
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         message: "Error updating payment status.",
         error: error.message,
@@ -124,24 +180,32 @@ const paymentController = {
       const orderId = req.params.orderId;
       const { amount_paid, payment_mode } = req.body;
 
-      if (!amount_paid || !payment_mode) {
+      if (amount_paid === undefined || !payment_mode) {
         return res.status(400).json({
           success: false,
           message: "Fields 'amount_paid' and 'payment_mode' are required.",
         });
       }
 
-      const order = await Order.getById(orderId);
-      if (!order || !order.total_amount) {
-        return res.status(404).json({
+      const parsedAmount = parseFloat(amount_paid);
+      if (isNaN(parsedAmount) || parsedAmount <= 0) {
+        return res.status(400).json({
           success: false,
-          message: `Order ${orderId} not found or has no total amount.`,
+          message: "amount_paid must be a positive number",
         });
       }
 
-      const total = parseFloat(order.total_amount);
+      const order = await Order.getById(orderId);
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: `Order ${orderId} not found.`,
+        });
+      }
+
+      const total = parseFloat(order.total_amount || 0);
       const prevPaid = await Payment.getTotalPaid(orderId);
-      const totalPaid = parseFloat(prevPaid || 0) + parseFloat(amount_paid);
+      const totalPaid = parseFloat(prevPaid || 0) + parsedAmount;
       const newBalance = total - totalPaid;
       const balanceForDB = newBalance > 0 ? newBalance : 0;
 
@@ -152,7 +216,7 @@ const paymentController = {
 
       const newPayment = await Payment.create({
         order_id: orderId,
-        amount_paid,
+        amount_paid: parsedAmount,
         payment_mode,
         payment_balance: balanceForDB,
         payment_status: paymentStatus,

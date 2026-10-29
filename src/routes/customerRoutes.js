@@ -24,19 +24,6 @@ import customerController from "../controllers/customerController.js";
  *                   type: array
  *                   items:
  *                     $ref: '#/components/schemas/Customer'
- *       404:
- *         description: No customers found
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: No customers found
  */
 router.get("/", customerController.getAll);
 
@@ -187,21 +174,33 @@ router.post("/", customerController.create);
  *     responses:
  *       200:
  *         description: Customer updated
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
  *       400:
  *         description: Validation error
  *       404:
  *         description: Customer not found
  */
 router.put("/:id", customerController.update);
+
+/**
+ * @openapi
+ * /api/customers/{id}:
+ *   delete:
+ *     summary: Delete a customer by ID
+ *     tags:
+ *       - Customers
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Customer deleted successfully
+ *       404:
+ *         description: Customer not found
+ */
+router.delete("/:id", customerController.delete);
 
 export default router;
 
