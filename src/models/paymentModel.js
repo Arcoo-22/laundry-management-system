@@ -1,21 +1,8 @@
-import db from "../config/database.js";
+import db, { withTransaction } from "../config/database.js";
+import { httpError, round2, normalizePaymentMode as strictMode, normalizePaymentStatus as strictStatus } from "../utils/http.js";
 
-const normalizePaymentMode = (val) => {
-  if (!val) return "Cash";
-  const str = String(val).trim().toLowerCase();
-  if (str.includes("gcash")) return "GCash";
-  if (str.includes("maya")) return "Maya";
-  if (str.includes("bank") || str.includes("transfer")) return "Bank Transfer";
-  return "Cash";
-};
-
-const normalizePaymentStatus = (val) => {
-  if (!val) return "Unpaid";
-  const str = String(val).trim().toLowerCase();
-  if (str.includes("full") || str === "completed" || str === "paid") return "Fully Paid";
-  if (str.includes("part")) return "Partially Paid";
-  return "Unpaid";
-};
+const normalizePaymentMode = (val) => strictMode(val) || "Cash";
+const normalizePaymentStatus = (val) => strictStatus(val) || "Unpaid";
 
 const Payment = {
   getAll: () => {
@@ -81,6 +68,64 @@ const Payment = {
       );
     });
   },
+
+
+  // Records a payment atomically: locks the order row, checks the balance, inserts the
+  // payment, and moves a Pending order to Processing once it is fully paid.
+  createForOrder: ({ order_id, amount_paid, payment_mode }) =>
+    withTransaction(async (conn) => {
+      const [orders] = await conn.query(
+        "SELECT order_id, total_amount, status FROM tbl_orders WHERE order_id = ? FOR UPDATE",
+        [order_id]
+      );
+      if (!orders.length) throw httpError(404, `Order ${order_id} not found.`);
+
+      const order = orders[0];
+      if (order.status === "Cancelled") {
+        throw httpError(409, "Can't record a payment for a cancelled order.");
+      }
+
+      const total = round2(order.total_amount);
+      if (total <= 0) {
+        throw httpError(400, "Total amount of order is zero or items have not been added yet.");
+      }
+
+      const [[paid]] = await conn.query(
+        "SELECT COALESCE(SUM(amount_paid), 0) AS totalPaid FROM tbl_payments WHERE order_id = ?",
+        [order_id]
+      );
+      const remaining = round2(total - round2(paid.totalPaid));
+      if (remaining <= 0) throw httpError(409, "This order is already fully paid.");
+
+      const amount = round2(amount_paid);
+      if (!(amount > 0)) throw httpError(400, "amount_paid must be at least 0.01");
+      if (amount > remaining) {
+        throw httpError(400, `Amount exceeds the remaining balance of ₱${remaining.toFixed(2)}.`);
+      }
+
+      const balance = round2(remaining - amount);
+      const status = balance === 0 ? "Fully Paid" : "Partially Paid";
+      const mode = normalizePaymentMode(payment_mode);
+
+      const [result] = await conn.query(
+        "INSERT INTO tbl_payments (order_id, amount_paid, payment_mode, payment_balance, payment_status) VALUES (?, ?, ?, ?, ?)",
+        [order_id, amount, mode, balance, status]
+      );
+
+      if (status === "Fully Paid" && order.status === "Pending") {
+        await conn.query("UPDATE tbl_orders SET status = 'Processing' WHERE order_id = ?", [order_id]);
+      }
+
+      return {
+        payment_id: result.insertId,
+        id: result.insertId,
+        order_id,
+        amount_paid: amount,
+        payment_mode: mode,
+        payment_balance: balance,
+        payment_status: status,
+      };
+    }),
 
   create: (paymentData) => {
     const { order_id, amount_paid, payment_mode, payment_balance, payment_status } = paymentData;

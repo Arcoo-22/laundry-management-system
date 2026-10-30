@@ -58,10 +58,9 @@ export function setupModalListeners() {
       }
     });
 
-    const closeBtn = modal.querySelector(".modal-close");
-    if (closeBtn) {
-      closeBtn.addEventListener("click", () => modal.classList.remove("active"));
-    }
+    modal.querySelectorAll(".modal-close, [data-close]").forEach((btn) => {
+      btn.addEventListener("click", () => modal.classList.remove("active"));
+    });
   });
 }
 
@@ -128,4 +127,105 @@ export function initNavigation(activeKey) {
     }
   });
   setupModalListeners();
+}
+
+// Floating bubble background (decorative, endless loop, sits behind all content)
+function initBubbles() {
+  if (document.getElementById("bubble-bg")) return;
+
+  const COUNT = 10;
+  const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0.4 : 1;
+
+  const layer = document.createElement("div");
+  layer.id = "bubble-bg";
+  layer.setAttribute("aria-hidden", "true");
+  document.body.prepend(layer);
+
+  // Each bubble rises from the bottom, leaves the top, then re-enters at the bottom with new traits
+  const respawn = (b, initial) => {
+    b.size = 28 + Math.random() * 80;
+    b.x = Math.random() * Math.max(1, window.innerWidth - b.size);
+    b.y = initial ? Math.random() * window.innerHeight : window.innerHeight + b.size + Math.random() * 200;
+    b.speed = (28 + Math.random() * 34) * calm;
+    b.amp = 14 + Math.random() * 26;
+    b.freq = 0.4 + Math.random() * 0.6;
+    b.phase = Math.random() * Math.PI * 2;
+    b.el.style.width = b.el.style.height = `${b.size}px`;
+    b.el.style.opacity = (0.55 + Math.random() * 0.4).toFixed(2);
+  };
+
+  const bubbles = Array.from({ length: COUNT }, () => {
+    const el = document.createElement("div");
+    el.className = "bubble";
+    layer.appendChild(el);
+    const b = { el };
+    respawn(b, true);
+    return b;
+  });
+
+  let last = performance.now();
+  const tick = (now) => {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    for (const b of bubbles) {
+      b.y -= b.speed * dt;
+      b.phase += b.freq * dt;
+      if (b.y < -b.size - 20) respawn(b, false);
+      b.el.style.transform = `translate3d(${b.x + Math.sin(b.phase) * b.amp}px, ${b.y}px, 0)`;
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initBubbles);
+} else {
+  initBubbles();
+}
+
+// Light / dark theme toggle (bottom-left of the sidebar), remembered between visits
+const THEME_KEY = "laundry-theme";
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  const btn = document.getElementById("theme-toggle");
+  if (btn) {
+    const dark = theme === "dark";
+    btn.setAttribute("aria-pressed", String(dark));
+    btn.querySelector(".nav-label").textContent = dark ? "Light mode" : "Dark mode";
+  }
+}
+
+function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem(THEME_KEY); } catch {}
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const sidebar = document.querySelector(".sidebar");
+
+  if (sidebar && !document.getElementById("theme-toggle")) {
+    const btn = document.createElement("button");
+    btn.id = "theme-toggle";
+    btn.type = "button";
+    btn.className = "theme-toggle";
+    btn.setAttribute("aria-label", "Toggle dark mode");
+    btn.innerHTML =
+      `<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>` +
+      `<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>` +
+      `<span class="nav-label"></span>`;
+    btn.addEventListener("click", () => {
+      const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      applyTheme(next);
+      try { localStorage.setItem(THEME_KEY, next); } catch {}
+    });
+    sidebar.appendChild(btn);
+  }
+
+  applyTheme(saved || (prefersDark ? "dark" : "light"));
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initTheme);
+} else {
+  initTheme();
 }

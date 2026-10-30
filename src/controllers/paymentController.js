@@ -1,20 +1,38 @@
 import Payment from "../models/paymentModel.js";
-import Order from "../models/orderModel.js";
+import {
+  isId,
+  normalizePaymentMode,
+  normalizePaymentStatus,
+  sendError,
+  PAYMENT_MODES,
+  PAYMENT_STATUSES,
+} from "../utils/http.js";
+
+// Shared validation for POST /payments and PUT /payments/complete/:orderId
+const parsePaymentInput = (order_id, body = {}) => {
+  if (!isId(order_id)) return { error: "order_id must be a valid id" };
+
+  const { amount_paid, payment_mode } = body;
+  if (amount_paid === undefined || amount_paid === null || amount_paid === "" || !payment_mode) {
+    return { error: "Fields 'amount_paid' and 'payment_mode' are required" };
+  }
+
+  const amount = Number(amount_paid);
+  if (!Number.isFinite(amount) || amount <= 0) return { error: "amount_paid must be a positive number" };
+
+  const mode = normalizePaymentMode(payment_mode);
+  if (!mode) return { error: `payment_mode must be one of: ${PAYMENT_MODES.join(", ")}` };
+
+  return { data: { order_id: Number(order_id), amount_paid: amount, payment_mode: mode } };
+};
 
 const paymentController = {
   getAll: async (req, res) => {
     try {
       const payments = await Payment.getAll();
-      return res.status(200).json({
-        success: true,
-        payments: payments || [],
-      });
+      return res.status(200).json({ success: true, payments: payments || [] });
     } catch (err) {
-      return res.status(500).json({
-        success: false,
-        message: "Error fetching payments",
-        error: err.message,
-      });
+      return sendError(res, err, "Error fetching payments");
     }
   },
 
@@ -24,134 +42,65 @@ const paymentController = {
       const payment = await Payment.getById(id);
 
       if (!payment) {
-        return res.status(404).json({
-          success: false,
-          message: `Payment #${id} not found.`,
-        });
+        return res.status(404).json({ success: false, message: `Payment #${id} not found.` });
       }
 
-      return res.status(200).json({
-        success: true,
-        payment: payment,
-        data: payment,
-      });
+      return res.status(200).json({ success: true, payment, data: payment });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error fetching payment",
-        error: error.message,
-      });
+      return sendError(res, error, "Error fetching payment");
     }
   },
 
   getByOrder: async (req, res) => {
     try {
-      const { orderId } = req.params;
-      const payments = await Payment.getByOrderId(orderId);
-      return res.status(200).json({
-        success: true,
-        payments: payments || [],
-      });
+      const payments = await Payment.getByOrderId(req.params.orderId);
+      return res.status(200).json({ success: true, payments: payments || [] });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error fetching order payments",
-        error: error.message,
-      });
+      return sendError(res, error, "Error fetching order payments");
     }
   },
 
+  // Balance checks, the insert and the Pending -> Processing move all happen in one transaction
   create: async (req, res) => {
     try {
-      const { order_id, amount_paid, payment_mode } = req.body;
+      const { data, error } = parsePaymentInput(req.body?.order_id, req.body);
+      if (error) return res.status(400).json({ success: false, message: error });
 
-      if (!order_id || amount_paid === undefined || !payment_mode) {
-        return res.status(400).json({
-          success: false,
-          message: "All fields (order_id, amount_paid, payment_mode) are required",
-        });
-      }
-
-      const parsedAmount = parseFloat(amount_paid);
-      if (isNaN(parsedAmount) || parsedAmount <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "amount_paid must be a positive number",
-        });
-      }
-
-      const order = await Order.getById(order_id);
-
-      if (!order) {
-        return res.status(404).json({
-          success: false,
-          message: `Order ${order_id} not found.`,
-        });
-      }
-
-      const total = parseFloat(order.total_amount || 0);
-      if (total <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Total amount of order is zero or items have not been added yet.",
-        });
-      }
-
-      const previousPayments = await Payment.getTotalPaid(order_id);
-      const totalPaid = previousPayments + parsedAmount;
-      const newBalance = total - totalPaid;
-      const balanceForDB = newBalance > 0 ? newBalance : 0;
-
-      let paymentStatus;
-      if (newBalance <= 0) {
-        paymentStatus = "Fully Paid";
-      } else if (totalPaid > 0) {
-        paymentStatus = "Partially Paid";
-      } else {
-        paymentStatus = "Unpaid";
-      }
-
-      const newPayment = await Payment.create({
-        order_id,
-        amount_paid: parsedAmount,
-        payment_mode,
-        payment_balance: balanceForDB,
-        payment_status: paymentStatus,
-      });
-
-      if (paymentStatus === "Fully Paid") {
-        await Order.updateStatus(order_id, "Processing");
-      }
+      const newPayment = await Payment.createForOrder(data);
 
       return res.status(201).json({
         success: true,
         message: "Payment recorded successfully.",
         payment: newPayment,
-        balance_remaining: balanceForDB,
-        payment_status: paymentStatus,
+        balance_remaining: newPayment.payment_balance,
+        payment_status: newPayment.payment_status,
       });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error creating payment",
-        error: error.message,
-      });
+      return sendError(res, error, "Error creating payment");
     }
   },
 
   updatePaymentStatus: async (req, res) => {
     try {
       const orderId = req.params.orderId;
-      const { newStatus } = req.body;
 
-      if (!newStatus) {
+      if (!req.body?.newStatus) {
         return res.status(400).json({
           success: false,
           message: "The 'newStatus' field is required for update.",
         });
       }
 
-      const result = await Payment.updatePaymentStatus(orderId, newStatus);
+      // Reject unknown values instead of silently saving "Unpaid"
+      const status = normalizePaymentStatus(req.body.newStatus);
+      if (!status) {
+        return res.status(400).json({
+          success: false,
+          message: `newStatus must be one of: ${PAYMENT_STATUSES.join(", ")}`,
+        });
+      }
+
+      const result = await Payment.updatePaymentStatus(orderId, status);
 
       if (!result || result.affectedRows === 0) {
         return res.status(404).json({
@@ -162,83 +111,31 @@ const paymentController = {
 
       return res.status(200).json({
         success: true,
-        message: `Payment status for Order ID ${orderId} updated to '${newStatus}'.`,
+        message: `Payment status for Order ID ${orderId} updated to '${status}'.`,
         order_id: orderId,
-        payment_status: newStatus,
+        payment_status: status,
       });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error updating payment status.",
-        error: error.message,
-      });
+      return sendError(res, error, "Error updating payment status.");
     }
   },
 
   completePayment: async (req, res) => {
     try {
-      const orderId = req.params.orderId;
-      const { amount_paid, payment_mode } = req.body;
+      const { data, error } = parsePaymentInput(req.params.orderId, req.body);
+      if (error) return res.status(400).json({ success: false, message: error });
 
-      if (amount_paid === undefined || !payment_mode) {
-        return res.status(400).json({
-          success: false,
-          message: "Fields 'amount_paid' and 'payment_mode' are required.",
-        });
-      }
-
-      const parsedAmount = parseFloat(amount_paid);
-      if (isNaN(parsedAmount) || parsedAmount <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "amount_paid must be a positive number",
-        });
-      }
-
-      const order = await Order.getById(orderId);
-      if (!order) {
-        return res.status(404).json({
-          success: false,
-          message: `Order ${orderId} not found.`,
-        });
-      }
-
-      const total = parseFloat(order.total_amount || 0);
-      const prevPaid = await Payment.getTotalPaid(orderId);
-      const totalPaid = parseFloat(prevPaid || 0) + parsedAmount;
-      const newBalance = total - totalPaid;
-      const balanceForDB = newBalance > 0 ? newBalance : 0;
-
-      let paymentStatus;
-      if (newBalance <= 0) paymentStatus = "Fully Paid";
-      else if (totalPaid > 0) paymentStatus = "Partially Paid";
-      else paymentStatus = "Unpaid";
-
-      const newPayment = await Payment.create({
-        order_id: orderId,
-        amount_paid: parsedAmount,
-        payment_mode,
-        payment_balance: balanceForDB,
-        payment_status: paymentStatus,
-      });
-
-      if (paymentStatus === "Fully Paid") {
-        await Order.updateStatus(orderId, "Processing");
-      }
+      const newPayment = await Payment.createForOrder(data);
 
       return res.status(200).json({
         success: true,
         message: "Payment applied successfully.",
         payment: newPayment,
-        balance_remaining: balanceForDB,
-        payment_status: paymentStatus,
+        balance_remaining: newPayment.payment_balance,
+        payment_status: newPayment.payment_status,
       });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error applying payment.",
-        error: error.message,
-      });
+      return sendError(res, error, "Error applying payment.");
     }
   },
 };

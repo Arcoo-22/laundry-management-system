@@ -1,58 +1,36 @@
 import Customer from "../models/customerModel.js";
+import { sendError, validateCustomer } from "../utils/http.js";
 
 const customerController = {
   getAll: async (req, res) => {
     try {
       const customers = await Customer.getAll();
-
-      return res.status(200).json({
-        success: true,
-        customers: customers || [],
-      });
+      return res.status(200).json({ success: true, customers: customers || [] });
     } catch (err) {
-      return res.status(500).json({
-        success: false,
-        message: "Error fetching customers",
-        error: err.message,
-      });
+      return sendError(res, err, "Error fetching customers");
     }
   },
 
   getById: async (req, res) => {
     try {
-      const { id } = req.params;
-      const customer = await Customer.getById(id);
+      const customer = await Customer.getById(req.params.id);
 
       if (!customer) {
-        return res.status(404).json({
-          success: false,
-          message: "Customer not found",
-        });
+        return res.status(404).json({ success: false, message: "Customer not found" });
       }
 
-      return res.status(200).json({
-        success: true,
-        data: customer,
-        customer: customer,
-      });
+      return res.status(200).json({ success: true, data: customer, customer });
     } catch (err) {
-      return res.status(500).json({
-        success: false,
-        message: "Error fetching customer",
-        error: err.message,
-      });
+      return sendError(res, err, "Error fetching customer");
     }
   },
 
   getByName: async (req, res) => {
     try {
-      const customerName = req.params.name;
+      const customerName = (req.params.name || "").trim();
 
       if (!customerName) {
-        return res.status(400).json({
-          success: false,
-          message: "Customer name is required",
-        });
+        return res.status(400).json({ success: false, message: "Customer name is required" });
       }
 
       const existingCustomers = await Customer.getByName(customerName);
@@ -70,32 +48,16 @@ const customerController = {
         message: existingCustomers,
       });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error fetching customer",
-        error: error.message,
-      });
+      return sendError(res, error, "Error fetching customer");
     }
   },
 
   create: async (req, res) => {
     try {
-      const { full_name, contact, email, address } = req.body;
+      const { data, error } = validateCustomer(req.body);
+      if (error) return res.status(400).json({ success: false, message: error });
 
-      if (!full_name || !contact || !email || !address) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "All fields (full_name, contact, email, address) are required",
-        });
-      }
-
-      const newCustomer = await Customer.create({
-        full_name,
-        contact,
-        email,
-        address,
-      });
+      const newCustomer = await Customer.create(data);
 
       return res.status(201).json({
         success: true,
@@ -103,47 +65,26 @@ const customerController = {
         customer_id: newCustomer.id,
       });
     } catch (err) {
-      return res.status(500).json({
-        success: false,
-        message: "Error creating customer",
-        error: err.message,
-      });
+      return sendError(res, err, "Error creating customer");
     }
   },
 
   update: async (req, res) => {
     try {
-      const { full_name, contact, email, address } = req.body;
       const id = req.params.id;
 
       const existingCustomer = await Customer.getById(id);
-
       if (!existingCustomer) {
-        return res.status(404).json({
-          success: false,
-          message: "Customer not found",
-        });
+        return res.status(404).json({ success: false, message: "Customer not found" });
       }
 
-      if (!full_name || !contact || !email || !address) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "All fields (full_name, contact, email, address) are required",
-        });
-      }
+      const { data, error } = validateCustomer(req.body);
+      if (error) return res.status(400).json({ success: false, message: error });
 
-      await Customer.update(id, { full_name, contact, email, address });
-      return res.status(200).json({
-        success: true,
-        message: `Customer ${id} updated.`,
-      });
+      await Customer.update(id, data);
+      return res.status(200).json({ success: true, message: `Customer ${id} updated.` });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: `Customer ${req.params.id} NOT updated`,
-        error: error.message,
-      });
+      return sendError(res, error, `Customer ${req.params.id} NOT updated`);
     }
   },
 
@@ -153,23 +94,18 @@ const customerController = {
       const existingCustomer = await Customer.getById(id);
 
       if (!existingCustomer) {
-        return res.status(404).json({
-          success: false,
-          message: "Customer not found",
-        });
+        return res.status(404).json({ success: false, message: "Customer not found" });
       }
 
       await Customer.delete(id);
-      return res.status(200).json({
-        success: true,
-        message: `Customer ${id} deleted successfully.`,
-      });
+      return res.status(200).json({ success: true, message: `Customer ${id} deleted successfully.` });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: `Customer ${req.params.id} NOT deleted`,
-        error: error.message,
-      });
+      return sendError(
+        res,
+        error,
+        `Customer ${req.params.id} NOT deleted`,
+        "This customer has existing orders and can't be deleted."
+      );
     }
   },
 };

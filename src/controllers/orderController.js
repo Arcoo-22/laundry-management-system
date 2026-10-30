@@ -1,21 +1,35 @@
 import Order from "../models/orderModel.js";
 import OrderItem from "../models/orderItemModel.js";
 import Payment from "../models/paymentModel.js";
+import {
+  isId,
+  normalizeDelivery,
+  normalizeOrderStatus,
+  sendError,
+  validateCustomer,
+  ORDER_STATUSES,
+  DELIVERY_METHODS,
+} from "../utils/http.js";
+
+const badStatus = (res) =>
+  res.status(400).json({
+    success: false,
+    message: `Invalid status. Allowed values: ${ORDER_STATUSES.join(", ")}`,
+  });
+
+const badDelivery = (res) =>
+  res.status(400).json({
+    success: false,
+    message: `Invalid delivery method. Allowed values: ${DELIVERY_METHODS.join(", ")}`,
+  });
 
 const orderController = {
   getAll: async (req, res) => {
     try {
       const orders = await Order.getAll();
-      return res.status(200).json({
-        success: true,
-        orders: orders || [],
-      });
+      return res.status(200).json({ success: true, orders: orders || [] });
     } catch (err) {
-      return res.status(500).json({
-        success: false,
-        message: "Error fetching orders",
-        error: err.message,
-      });
+      return sendError(res, err, "Error fetching orders");
     }
   },
 
@@ -25,10 +39,7 @@ const orderController = {
       const order = await Order.getById(id);
 
       if (!order) {
-        return res.status(404).json({
-          success: false,
-          message: "Order not found",
-        });
+        return res.status(404).json({ success: false, message: "Order not found" });
       }
 
       const [items, payments, totalPaid] = await Promise.all([
@@ -61,121 +72,116 @@ const orderController = {
         payments: payments || [],
       });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: `Error fetching order ${req.params.id}`,
-        error: error.message,
-      });
+      return sendError(res, error, `Error fetching order ${req.params.id}`);
     }
   },
 
   getByStatus: async (req, res) => {
     try {
-      const { status } = req.params;
-
-      if (!status) {
-        return res.status(400).json({
-          success: false,
-          message: "Status parameter is required",
-        });
-      }
+      const status = normalizeOrderStatus(req.params.status);
+      if (!status) return badStatus(res);
 
       const orders = await Order.getByStatus(status);
 
       return res.status(200).json({
         success: true,
-        status: status,
+        status,
         total: orders ? orders.length : 0,
         orders: orders || [],
       });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error fetching orders by status",
-        error: error.message,
-      });
+      return sendError(res, error, "Error fetching orders by status");
     }
   },
 
   getByName: async (req, res) => {
     try {
-      const { name } = req.params;
+      const name = (req.params.name || "").trim();
 
       if (!name) {
-        return res.status(400).json({
-          success: false,
-          message: "Customer name is required",
-        });
+        return res.status(400).json({ success: false, message: "Customer name is required" });
       }
 
       const orders = await Order.getByName(name);
 
       return res.status(200).json({
         success: true,
-        name: name,
+        name,
         total: orders ? orders.length : 0,
         orders: orders || [],
       });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error fetching orders by name",
-        error: error.message,
-      });
+      return sendError(res, error, "Error fetching orders by name");
     }
   },
 
+  // Accepts EITHER an existing customer_id OR new customer details
+  // ({ customer: { full_name, contact, email, address } }, or those fields at the top level).
   create: async (req, res) => {
     try {
-      const { customer_id, service_id, delivery_methods } = req.body;
+      const body = req.body || {};
+      const { customer_id, service_id, delivery_methods } = body;
 
-      if (!customer_id || !service_id) {
-        return res.status(400).json({
-          success: false,
-          message: "All fields (customer_id, service_id) are required",
-        });
+      if (!isId(service_id)) {
+        return res.status(400).json({ success: false, message: "service_id is required and must be a valid id" });
       }
 
-      const newOrder = await Order.create({
-        customer_id,
-        service_id,
-        delivery_methods,
+      let delivery = "Pickup";
+      if (delivery_methods !== undefined && delivery_methods !== null && String(delivery_methods).trim() !== "") {
+        delivery = normalizeDelivery(delivery_methods);
+        if (!delivery) return badDelivery(res);
+      }
+
+      const hasCustomerId = customer_id !== undefined && customer_id !== null && String(customer_id).trim() !== "";
+      let customer = null;
+
+      if (hasCustomerId) {
+        if (!isId(customer_id)) {
+          return res.status(400).json({ success: false, message: "customer_id must be a valid id" });
+        }
+      } else {
+        const source = body.customer && typeof body.customer === "object" ? body.customer : body;
+        const { data, error } = validateCustomer(source);
+        if (error) return res.status(400).json({ success: false, message: error });
+        customer = data;
+      }
+
+      const result = await Order.createWithCustomer({
+        customer_id: hasCustomerId ? Number(customer_id) : null,
+        customer,
+        service_id: Number(service_id),
+        delivery_methods: delivery,
       });
 
       return res.status(201).json({
         success: true,
         message: "Order created successfully",
-        order_id: newOrder.id,
+        order_id: result.order_id,
+        customer_id: result.customer_id,
+        customer_created: result.customer_created,
       });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error creating order",
-        error: error.message,
-      });
+      return sendError(res, error, "Error creating order");
     }
   },
 
   updateStatus: async (req, res) => {
     try {
-      const { status } = req.body;
       const id = req.params.id;
 
       const existingOrder = await Order.getById(id);
-
       if (!existingOrder) {
-        return res.status(404).json({
-          success: false,
-          message: `Order with id ${id} not found`,
-        });
+        return res.status(404).json({ success: false, message: `Order with id ${id} not found` });
       }
 
-      if (!status) {
-        return res.status(400).json({
-          success: false,
-          message: "Field {status} is required",
-        });
+      const rawStatus = req.body?.status;
+      if (!rawStatus) {
+        return res.status(400).json({ success: false, message: "Field {status} is required" });
       }
+
+      // Reject unknown values instead of silently turning them into "Pending"
+      const status = normalizeOrderStatus(rawStatus);
+      if (!status) return badStatus(res);
 
       await Order.updateStatus(id, status);
 
@@ -186,68 +192,50 @@ const orderController = {
         status,
       });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: `Error updating the status of order ${req.params.id}`,
-        error: error.message,
-      });
+      return sendError(res, error, `Error updating the status of order ${req.params.id}`);
     }
   },
 
   getOrdersByDeliveryMethod: async (req, res) => {
     try {
-      const delivery_methods = req.params.delivery_methods;
+      const delivery = normalizeDelivery(req.params.delivery_methods);
+      if (!delivery) return badDelivery(res);
 
-      const orders = await Order.getByDeliveryMethod(delivery_methods);
+      const orders = await Order.getByDeliveryMethod(delivery);
 
-      return res.status(200).json({
-        success: true,
-        orders: orders || [],
-      });
+      return res.status(200).json({ success: true, orders: orders || [] });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Server error",
-        error: error.message,
-      });
+      return sendError(res, error, "Server error");
     }
   },
 
   updateDelivery: async (req, res) => {
     try {
-      const { delivery_methods } = req.body;
       const id = req.params.id;
 
       const existingOrder = await Order.getById(id);
-
       if (!existingOrder) {
-        return res.status(404).json({
-          success: false,
-          message: `Order with ID ${id} not found`,
-        });
+        return res.status(404).json({ success: false, message: `Order with ID ${id} not found` });
       }
 
-      if (!delivery_methods) {
-        return res.status(400).json({
-          success: false,
-          message: "Field {delivery_methods} is required",
-        });
+      const rawDelivery = req.body?.delivery_methods;
+      if (!rawDelivery) {
+        return res.status(400).json({ success: false, message: "Field {delivery_methods} is required" });
       }
 
-      await Order.updateDelivery(id, delivery_methods);
+      const delivery = normalizeDelivery(rawDelivery);
+      if (!delivery) return badDelivery(res);
+
+      await Order.updateDelivery(id, delivery);
 
       return res.status(200).json({
         success: true,
         message: "Delivery method updated successfully",
         order_id: id,
-        delivery_methods,
+        delivery_methods: delivery,
       });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: `Error updating delivery method for order ${req.params.id}`,
-        error: error.message,
-      });
+      return sendError(res, error, `Error updating delivery method for order ${req.params.id}`);
     }
   },
 
@@ -257,23 +245,13 @@ const orderController = {
       const existingOrder = await Order.getById(id);
 
       if (!existingOrder) {
-        return res.status(404).json({
-          success: false,
-          message: `Order #${id} not found`,
-        });
+        return res.status(404).json({ success: false, message: `Order #${id} not found` });
       }
 
       await Order.delete(id);
-      return res.status(200).json({
-        success: true,
-        message: `Order #${id} deleted successfully.`,
-      });
+      return res.status(200).json({ success: true, message: `Order #${id} deleted successfully.` });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: `Error deleting order #${req.params.id}`,
-        error: error.message,
-      });
+      return sendError(res, error, `Error deleting order #${req.params.id}`);
     }
   },
 };

@@ -30,7 +30,7 @@ async function loadInitialData() {
 
 function populateDropdowns() {
   const custSelect = document.getElementById("new-order-customer");
-  if (custSelect) {
+  if (custSelect && custSelect.tagName === "SELECT") {
     custSelect.innerHTML = `<option value="">-- Choose a Customer --</option>` +
       customersList.map(c => `<option value="${c.customer_id}">${escapeHtml(c.full_name)} (${escapeHtml(c.contact)})</option>`).join("");
   }
@@ -227,13 +227,23 @@ document.addEventListener("DOMContentLoaded", () => {
   // Create Order Submit
   document.getElementById("form-create-order")?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const customer_id = parseInt(document.getElementById("new-order-customer").value, 10);
+    const customer = {
+      full_name: document.getElementById("new-order-customer").value.trim(),
+      contact: document.getElementById("new-order-contact").value.trim(),
+      email: document.getElementById("new-order-email").value.trim(),
+      address: document.getElementById("new-order-address").value.trim(),
+    };
     const service_id = parseInt(document.getElementById("new-order-service").value, 10);
     const delivery_methods = document.getElementById("new-order-delivery").value;
 
     try {
-      const res = await api.orders.create({ customer_id, service_id, delivery_methods });
-      showToast("Order created successfully! Now add items.", "success");
+      const res = await api.orders.create({ customer, service_id, delivery_methods });
+      showToast(
+        res.customer_created
+          ? "Order created and new customer saved! Now add items."
+          : "Order created for existing customer (matched by email)! Now add items.",
+        "success"
+      );
       closeModal("modal-create-order");
       await loadInitialData();
       
