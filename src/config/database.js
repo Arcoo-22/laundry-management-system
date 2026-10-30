@@ -1,7 +1,8 @@
 import mysql from "mysql2";
 import dotenv from "dotenv";
 
-dotenv.config();
+// Supports both ".env" and ".env_local" (first file wins for any duplicate key)
+dotenv.config({ path: [".env", ".env_local"], quiet: true });
 
 const db = mysql.createPool({
   host: process.env.DB_HOST || "localhost",
@@ -26,5 +27,23 @@ export const dbConnect = () =>
       resolve(db);
     });
   });
+
+// Run several queries atomically. `fn` receives a promise-based connection:
+//   const [rows] = await conn.query("SELECT ...", [params]);
+// Commits when fn resolves, rolls back (and rethrows) when it throws.
+export const withTransaction = async (fn) => {
+  const conn = await db.promise().getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await fn(conn);
+    await conn.commit();
+    return result;
+  } catch (err) {
+    try { await conn.rollback(); } catch { /* ignore rollback failure */ }
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
 
 export default db;

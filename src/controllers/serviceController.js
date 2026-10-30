@@ -1,4 +1,33 @@
 import Service from "../models/serviceModel.js";
+import { cleanText, round2, sendError } from "../utils/http.js";
+
+const MAX_PRICE = 99999999.99; // DECIMAL(10,2)
+
+// Returns { data } with cleaned values, or { error } for the client.
+// description is optional (the UI shows "No description provided." when empty).
+const validateService = (body = {}) => {
+  const service_name = cleanText(body.service_name);
+  if (!service_name || body.price_per_kilo === undefined || body.price_per_kilo === null || body.price_per_kilo === "") {
+    return { error: "Fields service_name and price_per_kilo are required" };
+  }
+  if (service_name.length > 100) return { error: "service_name must be 100 characters or fewer" };
+
+  const price = parseFloat(body.price_per_kilo);
+  if (!Number.isFinite(price) || price <= 0) return { error: "price_per_kilo must be a positive number" };
+  if (price > MAX_PRICE) return { error: "price_per_kilo is too large" };
+
+  if (body.description !== undefined && body.description !== null && typeof body.description !== "string") {
+    return { error: "description must be text" };
+  }
+
+  return {
+    data: {
+      service_name,
+      price_per_kilo: round2(price),
+      description: (body.description || "").trim(),
+    },
+  };
+};
 
 const serviceController = {
   getAll: async (req, res) => {
@@ -11,169 +40,84 @@ const serviceController = {
         available_services: services || [],
       });
     } catch (error) {
-      console.error("Error fetching services:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch services.",
-        error: error.message,
-      });
+      return sendError(res, error, "Failed to fetch services.");
     }
   },
 
   getById: async (req, res) => {
     try {
       const { id } = req.params;
-
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Service ID is required",
-        });
-      }
-
       const service = await Service.getById(id);
 
       if (!service) {
-        return res.status(404).json({
-          success: false,
-          message: `No service found with ID: ${id}`,
-        });
+        return res.status(404).json({ success: false, message: `No service found with ID: ${id}` });
       }
 
-      return res.status(200).json({
-        success: true,
-        data: service,
-        service: service,
-      });
+      return res.status(200).json({ success: true, data: service, service });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error fetching service by ID",
-        error: error.message,
-      });
+      return sendError(res, error, "Error fetching service by ID");
     }
   },
 
   getByName: async (req, res) => {
     try {
-      const { name } = req.params;
+      const name = (req.params.name || "").trim();
 
       if (!name) {
-        return res.status(400).json({
-          success: false,
-          message: "Service name is required",
-        });
+        return res.status(400).json({ success: false, message: "Service name is required" });
       }
 
       const services = await Service.getByName(name);
 
       if (!services || services.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: `No services found matching: ${name}`,
-        });
+        return res.status(404).json({ success: false, message: `No services found matching: ${name}` });
       }
 
       return res.status(200).json({
         success: true,
         total: services.length,
         results: services,
-        services: services,
+        services,
       });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error searching service by name",
-        error: error.message,
-      });
+      return sendError(res, error, "Error searching service by name");
     }
   },
 
   create: async (req, res) => {
     try {
-      const { service_name, price_per_kilo, description } = req.body;
+      const { data, error } = validateService(req.body);
+      if (error) return res.status(400).json({ success: false, message: error });
 
-      if (!service_name || price_per_kilo === undefined || !description) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "All fields (service_name, price_per_kilo, description) are required",
-        });
-      }
-
-      const parsedPrice = parseFloat(price_per_kilo);
-      if (isNaN(parsedPrice) || parsedPrice <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "price_per_kilo must be a positive number",
-        });
-      }
-
-      const newService = await Service.create({
-        service_name,
-        price_per_kilo: parsedPrice,
-        description,
-      });
+      const newService = await Service.create(data);
 
       return res.status(201).json({
         success: true,
         message: "Service created successfully",
         service_id: newService.id,
-        newService: newService,
+        newService,
       });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Internal server error",
-        error: error.message,
-      });
+      return sendError(res, error, "Internal server error");
     }
   },
 
   update: async (req, res) => {
     try {
       const { id } = req.params;
-      const { service_name, price_per_kilo, description } = req.body;
 
       const existingService = await Service.getById(id);
       if (!existingService) {
-        return res.status(404).json({
-          success: false,
-          message: `Service #${id} not found`,
-        });
+        return res.status(404).json({ success: false, message: `Service #${id} not found` });
       }
 
-      if (!service_name || price_per_kilo === undefined || !description) {
-        return res.status(400).json({
-          success: false,
-          message: "All fields (service_name, price_per_kilo, description) are required",
-        });
-      }
+      const { data, error } = validateService(req.body);
+      if (error) return res.status(400).json({ success: false, message: error });
 
-      const parsedPrice = parseFloat(price_per_kilo);
-      if (isNaN(parsedPrice) || parsedPrice <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "price_per_kilo must be a positive number",
-        });
-      }
-
-      await Service.update(id, {
-        service_name,
-        price_per_kilo: parsedPrice,
-        description,
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: `Service #${id} updated successfully.`,
-      });
+      await Service.update(id, data);
+      return res.status(200).json({ success: true, message: `Service #${id} updated successfully.` });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error updating service",
-        error: error.message,
-      });
+      return sendError(res, error, "Error updating service");
     }
   },
 
@@ -183,23 +127,13 @@ const serviceController = {
       const existingService = await Service.getById(id);
 
       if (!existingService) {
-        return res.status(404).json({
-          success: false,
-          message: `Service #${id} not found`,
-        });
+        return res.status(404).json({ success: false, message: `Service #${id} not found` });
       }
 
       await Service.delete(id);
-      return res.status(200).json({
-        success: true,
-        message: `Service #${id} deleted successfully.`,
-      });
+      return res.status(200).json({ success: true, message: `Service #${id} deleted successfully.` });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Error deleting service",
-        error: error.message,
-      });
+      return sendError(res, error, "Error deleting service", "This service is used by existing orders and can't be deleted.");
     }
   },
 };

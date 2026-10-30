@@ -1,230 +1,131 @@
-import db from "../config/database.js";
+import db, { withTransaction } from "../config/database.js";
+import { httpError, round2, cleanText } from "../utils/http.js";
+
+// Column limits from the schema: weight DECIMAL(5,2), total_weight DECIMAL(6,2), money DECIMAL(10,2)
+const MAX_ITEM_WEIGHT = 999.99;
+const MAX_ORDER_WEIGHT = 9999.99;
+const MAX_MONEY = 99999999.99;
+const LOCKED_STATUSES = ["Cancelled", "Completed"];
+
+// Validates one item payload and returns the cleaned values
+const parseItem = (item, pricePerKilo) => {
+  const clothe_type = cleanText(item?.clothe_type);
+  if (!clothe_type) throw httpError(400, "Each item must have a clothe_type");
+  if (clothe_type.length > 50) throw httpError(400, "clothe_type must be 50 characters or fewer");
+
+  const weight = round2(parseFloat(item?.weight_in_kilo));
+  if (!Number.isFinite(weight) || weight <= 0) {
+    throw httpError(400, "Each item must have a valid positive weight_in_kilo");
+  }
+  if (weight > MAX_ITEM_WEIGHT) throw httpError(400, `An item can't weigh more than ${MAX_ITEM_WEIGHT} kg`);
+
+  const subtotal = round2(weight * pricePerKilo);
+  if (subtotal > MAX_MONEY) throw httpError(400, "Item subtotal is too large");
+  return { clothe_type, weight, subtotal };
+};
+
+const assertEditable = (status) => {
+  if (LOCKED_STATUSES.includes(status)) {
+    throw httpError(409, `Items can't be changed on a ${status.toLowerCase()} order.`);
+  }
+};
+
+// Recalculate the order's totals from ALL of its items (runs inside the caller's transaction)
+const recalcTotals = async (conn, order_id) => {
+  const [[t]] = await conn.query(
+    `SELECT COALESCE(SUM(weight_in_kilo), 0) AS totalWeight, COALESCE(SUM(subtotal), 0) AS totalAmount
+     FROM tbl_order_items WHERE order_id = ?`,
+    [order_id]
+  );
+  const totalWeight = round2(t.totalWeight);
+  const totalAmount = round2(t.totalAmount);
+  if (totalWeight > MAX_ORDER_WEIGHT || totalAmount > MAX_MONEY) {
+    throw httpError(400, "Order totals are too large.");
+  }
+  await conn.query("UPDATE tbl_orders SET total_weight = ?, total_amount = ? WHERE order_id = ?", [
+    totalWeight,
+    totalAmount,
+    order_id,
+  ]);
+  return { totalWeight, totalAmount };
+};
 
 const OrderItem = {
-  addItems: async (order_id, items) => {
-    // 1. Validate order existence and fetch price_per_kilo
-    const serviceResult = await new Promise((resolve, reject) => {
-      db.query(
-        `SELECT s.price_per_kilo 
-         FROM tbl_orders o 
-         JOIN tbl_services s ON o.service_id = s.service_id 
-         WHERE o.order_id = ?`,
-        [order_id],
-        (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        }
+  // All-or-nothing: if any item is invalid, nothing is inserted
+  addItems: (order_id, items) =>
+    withTransaction(async (conn) => {
+      const [rows] = await conn.query(
+        `SELECT o.status, s.price_per_kilo
+         FROM tbl_orders o
+         JOIN tbl_services s ON o.service_id = s.service_id
+         WHERE o.order_id = ? FOR UPDATE`,
+        [order_id]
       );
-    });
+      if (!rows.length) throw httpError(404, "Order not found or service missing");
+      assertEditable(rows[0].status);
 
-    if (!serviceResult || !serviceResult.length) {
-      const err = new Error("Order not found or service missing");
-      err.status = 404;
-      throw err;
-    }
+      const price = parseFloat(rows[0].price_per_kilo);
+      const parsed = items.map((item) => parseItem(item, price)); // validate everything first
 
-    const pricePerKilo = parseFloat(serviceResult[0].price_per_kilo);
+      await conn.query("INSERT INTO tbl_order_items (order_id, clothe_type, weight_in_kilo, subtotal) VALUES ?", [
+        parsed.map((i) => [order_id, i.clothe_type, i.weight, i.subtotal]),
+      ]);
 
-    // 2. Validate and insert each item
-    for (const item of items) {
-      const weight = parseFloat(item.weight_in_kilo);
-      if (isNaN(weight) || weight <= 0) {
-        const err = new Error("Each item must have a valid positive weight_in_kilo");
-        err.status = 400;
-        throw err;
-      }
-      if (!item.clothe_type) {
-        const err = new Error("Each item must have a clothe_type");
-        err.status = 400;
-        throw err;
-      }
-
-      const subtotal = weight * pricePerKilo;
-
-      await new Promise((resolve, reject) => {
-        db.query(
-          "INSERT INTO tbl_order_items (order_id, clothe_type, weight_in_kilo, subtotal) VALUES (?, ?, ?, ?)",
-          [order_id, item.clothe_type, weight, subtotal],
-          (err, result) => {
-            if (err) return reject(err);
-            resolve(result);
-          }
-        );
-      });
-    }
-
-    // 3. Recalculate totals across ALL items belonging to this order
-    const totals = await new Promise((resolve, reject) => {
-      db.query(
-        `SELECT SUM(weight_in_kilo) AS totalWeight, SUM(subtotal) AS totalAmount
-         FROM tbl_order_items
-         WHERE order_id = ?`,
-        [order_id],
-        (err, results) => {
-          if (err) return reject(err);
-          resolve(results && results.length ? results[0] : { totalWeight: 0, totalAmount: 0 });
-        }
-      );
-    });
-
-    const totalWeight = parseFloat(totals.totalWeight || 0);
-    const totalAmount = parseFloat(totals.totalAmount || 0);
-
-    // 4. Update the order's summary fields
-    await new Promise((resolve, reject) => {
-      db.query(
-        "UPDATE tbl_orders SET total_weight = ?, total_amount = ? WHERE order_id = ?",
-        [totalWeight, totalAmount, order_id],
-        (err, result) => {
-          if (err) return reject(err);
-          resolve(result);
-        }
-      );
-    });
-
-    return { totalWeight, totalAmount };
-  },
+      return recalcTotals(conn, order_id);
+    }),
 
   getByOrder: (order_id) => {
     return new Promise((resolve, reject) => {
-      db.query(
-        "SELECT * FROM tbl_order_items WHERE order_id = ?",
-        [order_id],
-        (err, results) => {
-          if (err) return reject(err);
-          resolve(results || []);
-        }
-      );
+      db.query("SELECT * FROM tbl_order_items WHERE order_id = ?", [order_id], (err, results) => {
+        if (err) return reject(err);
+        resolve(results || []);
+      });
     });
   },
 
-  updateItem: async (item_id, updatedData) => {
-    if (!updatedData.clothe_type || typeof updatedData.weight_in_kilo !== "number" || updatedData.weight_in_kilo <= 0) {
-      const err = new Error("clothe_type and a positive weight_in_kilo are required");
-      err.status = 400;
-      throw err;
-    }
-
-    const itemResults = await new Promise((resolve, reject) => {
-      db.query(
-        `SELECT oi.order_id, s.price_per_kilo
+  updateItem: (item_id, updatedData) =>
+    withTransaction(async (conn) => {
+      const [rows] = await conn.query(
+        `SELECT oi.order_id, o.status, s.price_per_kilo
          FROM tbl_order_items oi
          JOIN tbl_orders o ON oi.order_id = o.order_id
          JOIN tbl_services s ON o.service_id = s.service_id
-         WHERE oi.item_id = ?`,
-        [item_id],
-        (err, results) => {
-          if (err) return reject(err);
-          if (!results || !results.length) {
-            const notFound = new Error("Order item not found");
-            notFound.status = 404;
-            return reject(notFound);
-          }
-          resolve(results[0]);
-        }
+         WHERE oi.item_id = ? FOR UPDATE`,
+        [item_id]
       );
-    });
+      if (!rows.length) throw httpError(404, "Order item not found");
+      assertEditable(rows[0].status);
 
-    const { order_id, price_per_kilo } = itemResults;
-    const subtotal = updatedData.weight_in_kilo * parseFloat(price_per_kilo);
+      const { order_id, price_per_kilo } = rows[0];
+      const item = parseItem(updatedData, parseFloat(price_per_kilo));
 
-    await new Promise((resolve, reject) => {
-      db.query(
-        `UPDATE tbl_order_items
-         SET clothe_type = ?, weight_in_kilo = ?, subtotal = ?
-         WHERE item_id = ?`,
-        [updatedData.clothe_type, updatedData.weight_in_kilo, subtotal, item_id],
-        (err, result) => {
-          if (err) return reject(err);
-          resolve(result);
-        }
+      await conn.query(
+        "UPDATE tbl_order_items SET clothe_type = ?, weight_in_kilo = ?, subtotal = ? WHERE item_id = ?",
+        [item.clothe_type, item.weight, item.subtotal, item_id]
       );
-    });
 
-    const totals = await new Promise((resolve, reject) => {
-      db.query(
-        `SELECT SUM(weight_in_kilo) AS totalWeight, SUM(subtotal) AS totalAmount
-         FROM tbl_order_items
-         WHERE order_id = ?`,
-        [order_id],
-        (err, results) => {
-          if (err) return reject(err);
-          resolve(results && results.length ? results[0] : { totalWeight: 0, totalAmount: 0 });
-        }
+      const totals = await recalcTotals(conn, order_id);
+      return { success: true, ...totals };
+    }),
+
+  deleteItem: (item_id) =>
+    withTransaction(async (conn) => {
+      const [rows] = await conn.query(
+        `SELECT oi.order_id, o.status
+         FROM tbl_order_items oi
+         JOIN tbl_orders o ON oi.order_id = o.order_id
+         WHERE oi.item_id = ? FOR UPDATE`,
+        [item_id]
       );
-    });
+      if (!rows.length) throw httpError(404, "Order item not found");
+      assertEditable(rows[0].status);
 
-    const totalWeight = parseFloat(totals.totalWeight || 0);
-    const totalAmount = parseFloat(totals.totalAmount || 0);
+      const { order_id } = rows[0];
+      await conn.query("DELETE FROM tbl_order_items WHERE item_id = ?", [item_id]);
 
-    await new Promise((resolve, reject) => {
-      db.query(
-        `UPDATE tbl_orders
-         SET total_weight = ?, total_amount = ?
-         WHERE order_id = ?`,
-        [totalWeight, totalAmount, order_id],
-        (err, result) => {
-          if (err) return reject(err);
-          resolve(result);
-        }
-      );
-    });
-
-    return { success: true, totalWeight, totalAmount };
-  },
-
-  deleteItem: async (item_id) => {
-    const item = await new Promise((resolve, reject) => {
-      db.query("SELECT order_id FROM tbl_order_items WHERE item_id = ?", [item_id], (err, rows) => {
-        if (err) return reject(err);
-        resolve(rows && rows.length ? rows[0] : null);
-      });
-    });
-
-    if (!item) {
-      const notFound = new Error("Order item not found");
-      notFound.status = 404;
-      throw notFound;
-    }
-
-    const order_id = item.order_id;
-
-    await new Promise((resolve, reject) => {
-      db.query("DELETE FROM tbl_order_items WHERE item_id = ?", [item_id], (err, result) => {
-        if (err) return reject(err);
-        resolve(result);
-      });
-    });
-
-    const totals = await new Promise((resolve, reject) => {
-      db.query(
-        `SELECT SUM(weight_in_kilo) AS totalWeight, SUM(subtotal) AS totalAmount
-         FROM tbl_order_items
-         WHERE order_id = ?`,
-        [order_id],
-        (err, results) => {
-          if (err) return reject(err);
-          resolve(results && results.length ? results[0] : { totalWeight: 0, totalAmount: 0 });
-        }
-      );
-    });
-
-    const totalWeight = parseFloat(totals.totalWeight || 0);
-    const totalAmount = parseFloat(totals.totalAmount || 0);
-
-    await new Promise((resolve, reject) => {
-      db.query(
-        "UPDATE tbl_orders SET total_weight = ?, total_amount = ? WHERE order_id = ?",
-        [totalWeight, totalAmount, order_id],
-        (err, result) => {
-          if (err) return reject(err);
-          resolve(result);
-        }
-      );
-    });
-
-    return { success: true, order_id, totalWeight, totalAmount };
-  },
+      const totals = await recalcTotals(conn, order_id);
+      return { success: true, order_id, ...totals };
+    }),
 };
 
 export default OrderItem;
