@@ -133,7 +133,7 @@ export function initNavigation(activeKey) {
 function initBubbles() {
   if (document.getElementById("bubble-bg")) return;
 
-  const COUNT = 10;
+  const COUNT = 20; // how many bubbles float at once
   const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0.4 : 1;
 
   const layer = document.createElement("div");
@@ -146,7 +146,7 @@ function initBubbles() {
     b.size = 28 + Math.random() * 80;
     b.x = Math.random() * Math.max(1, window.innerWidth - b.size);
     b.y = initial ? Math.random() * window.innerHeight : window.innerHeight + b.size + Math.random() * 200;
-    b.speed = (28 + Math.random() * 34) * calm;
+    b.speed = (45 + Math.random() * 50) * calm; // pixels per second (higher = faster)
     b.amp = 14 + Math.random() * 26;
     b.freq = 0.4 + Math.random() * 0.6;
     b.phase = Math.random() * Math.PI * 2;
@@ -228,4 +228,12 @@ if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initTheme);
 } else {
   initTheme();
+}
+
+// Bubbo, the assistant mascot (loaded after the page so it never blocks rendering)
+const loadBubbo = () => import("./bubbo.js").catch((err) => console.warn("Bubbo failed to load:", err));
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", loadBubbo);
+} else {
+  loadBubbo();
 }

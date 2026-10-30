@@ -13,8 +13,9 @@
   "description": "The **Laundry Management System API** is a backend service built using **Javascript**, and **MySQL**.  \r This system automates customer records, order tracking, and payment management for laundry shop operations.",
   "dependencies": {
     "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
-    "express": "^5.1.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.3.0",
+    "groq-sdk": "^1.6.0",
     "mysql2": "^3.15.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
