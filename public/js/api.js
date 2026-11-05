@@ -9,6 +9,12 @@ async function request(path, { method = "GET", body } = {}) {
 
   const data = await res.json().catch(() => ({}));
 
+  // Session ended (or never started): go to the sign-in page instead of showing errors
+  if (res.status === 401) {
+    location.replace("/");
+    return new Promise(() => {}); // the page is leaving; never resolve
+  }
+
   if (!res.ok) {
     const err = new Error(data.message || `Request failed (${res.status})`);
     err.status = res.status;
@@ -94,6 +100,10 @@ export const api = {
     setDelivery: (id, delivery_methods) =>
       request(`/orders/delivery/${id}`, { method: "PUT", body: { delivery_methods } }),
     delete: (id) => request(`/orders/${id}`, { method: "DELETE" }),
+    // Customer requests waiting for the admin's decision
+    pendingCount: async () => (await request("/orders/pending-count")).count ?? 0,
+    confirm: (id) => request(`/orders/${id}/confirm`, { method: "PUT" }),
+    reject: (id, reason) => request(`/orders/${id}/reject`, { method: "PUT", body: { reason } }),
   },
 
   // ---------- Order items ----------
@@ -126,5 +136,31 @@ export const api = {
       request(`/payments/${orderId}`, { method: "PUT", body: { newStatus } }),
     complete: (orderId, body) =>
       request(`/payments/complete/${orderId}`, { method: "PUT", body }),
+  },
+
+  // ---------- Session ----------
+  auth: {
+    me: async () => (await request("/auth/me")).user,
+    logout: () => request("/auth/logout", { method: "POST" }),
+    changePassword: (current_password, new_password) =>
+      request("/auth/password", { method: "PUT", body: { current_password, new_password } }),
+  },
+
+  // ---------- Staff accounts (superadmin only) ----------
+  staff: {
+    list: async () => (await request("/staff")).staff ?? [],
+    create: (body) => request("/staff", { method: "POST", body }),
+    update: (id, body) => request(`/staff/${id}`, { method: "PUT", body }),
+    resetPassword: (id, password) => request(`/staff/${id}/password`, { method: "PUT", body: { password } }),
+  },
+
+  // ---------- Customer portal (customers only) ----------
+  portal: {
+    profile: async () => (await request("/portal/profile")).profile,
+    updateProfile: (body) => request("/portal/profile", { method: "PUT", body }),
+    orders: async () => (await request("/portal/orders")).orders ?? [],
+    order: (id) => request(`/portal/orders/${id}`),
+    createOrder: (body) => request("/portal/orders", { method: "POST", body }),
+    cancelOrder: (id) => request(`/portal/orders/${id}/cancel`, { method: "PUT" }),
   },
 };

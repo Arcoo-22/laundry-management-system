@@ -85,7 +85,9 @@ export function formatDate(dateStr) {
 export function renderOrderStatusBadge(status) {
   const s = (status || "Pending").toLowerCase();
   let badgeClass = "badge-pending";
-  if (s === "processing") badgeClass = "badge-processing";
+  if (s === "pending confirmation") badgeClass = "badge-awaiting";
+  else if (s === "rejected") badgeClass = "badge-rejected";
+  else if (s === "processing") badgeClass = "badge-processing";
   else if (s === "ready") badgeClass = "badge-ready";
   else if (s === "completed") badgeClass = "badge-completed";
   else if (s === "cancelled") badgeClass = "badge-cancelled";
@@ -230,10 +232,175 @@ if (document.readyState === "loading") {
   initTheme();
 }
 
+// ---------------------------------------------------------------------------
+// Session: who is signed in, sign out, and (for admins) the "waiting for you" badge.
+// Pages marked <body data-access="public"> (login, register) skip all of this.
+// The server already blocks the wrong role from pages and data; this just fills in the UI.
+// ---------------------------------------------------------------------------
+export let currentUser = null;
+
+// auth.css holds the styles for everything added by sign-in; pages don't have to link it
+if (!document.querySelector('link[href$="css/auth.css"]')) {
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = "/css/auth.css";
+  document.head.appendChild(link);
+}
+
+const ROLE_LABELS = { customer: "Customer", staff: "Staff", admin: "Admin", superadmin: "Superadmin" };
+const isStaffRole = (role) => role === "staff" || role === "admin" || role === "superadmin";
+
+export async function logout() {
+  const wasCustomer = currentUser?.role === "customer";
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } finally {
+    // Signed-out staff pass through "/" and land back on their own entrance
+    location.replace(wasCustomer ? "/login.html" : "/");
+  }
+}
+
+function mountUserChip(user) {
+  const sidebar = document.querySelector(".sidebar");
+  if (!sidebar || document.getElementById("user-chip")) return;
+
+  const chip = document.createElement("div");
+  chip.id = "user-chip";
+  chip.className = "user-chip";
+  chip.innerHTML =
+    `<div class="user-chip-name">${escapeHtml(user.full_name)}</div>` +
+    `<div class="user-chip-role">${ROLE_LABELS[user.role] || user.role}</div>` +
+    (isStaffRole(user.role) ? `<button type="button" class="btn btn-outline btn-sm" id="btn-my-password">Change password</button>` : "") +
+    `<button type="button" class="btn btn-outline btn-sm" id="btn-logout">Sign out</button>`;
+  chip.querySelector("#btn-logout").addEventListener("click", logout);
+  chip.querySelector("#btn-my-password")?.addEventListener("click", openPasswordModal);
+
+  const footer = sidebar.querySelector(".sidebar-footer");
+  sidebar.insertBefore(chip, footer || null);
+}
+
+// Staff change their own password from the sidebar (customers have this on their Profile page)
+function openPasswordModal() {
+  let modal = document.getElementById("modal-my-password");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.className = "modal-overlay";
+    modal.id = "modal-my-password";
+    modal.innerHTML = `
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title">Change password</h3>
+          <button type="button" class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <form id="form-my-password">
+          <div class="modal-body">
+            <div class="form-group"><label class="form-label" for="mypw-current">Current password</label><input class="form-input" id="mypw-current" type="password" autocomplete="current-password" required></div>
+            <div class="form-group"><label class="form-label" for="mypw-new">New password</label><input class="form-input" id="mypw-new" type="password" autocomplete="new-password" minlength="8" required><div class="form-hint">At least 8 characters.</div></div>
+            <div class="form-group"><label class="form-label" for="mypw-confirm">Confirm new password</label><input class="form-input" id="mypw-confirm" type="password" autocomplete="new-password" required></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-close>Cancel</button>
+            <button type="submit" class="btn btn-primary">Change password</button>
+          </div>
+        </form>
+      </div>`;
+    document.body.appendChild(modal);
+
+    const close = () => modal.classList.remove("active");
+    modal.addEventListener("click", (e) => e.target === modal && close());
+    modal.querySelectorAll(".modal-close, [data-close]").forEach((btn) => btn.addEventListener("click", close));
+
+    modal.querySelector("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const next = document.getElementById("mypw-new").value;
+      if (next !== document.getElementById("mypw-confirm").value) return showToast("The new passwords don't match.", "error");
+      try {
+        const res = await fetch("/api/auth/password", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ current_password: document.getElementById("mypw-current").value, new_password: next }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "Could not change the password.");
+        showToast("Password changed.", "success");
+        e.target.reset();
+        close();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+  }
+  openModal("modal-my-password");
+}
+
+// Only the superadmin sees this link (the server also blocks the page and the API for everyone else)
+function mountStaffNav() {
+  const menu = document.querySelector(".sidebar-menu");
+  if (!menu || menu.querySelector('[data-nav="staff"]')) return;
+  const li = document.createElement("li");
+  li.className = "nav-item" + (/\/staff\.html$/i.test(location.pathname) ? " active" : "");
+  li.dataset.nav = "staff";
+  li.innerHTML =
+    `<a href="staff.html"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="nav-label">Staff accounts</span></a>`;
+  menu.appendChild(li);
+}
+
+// Number of customer requests waiting for the admin, shown next to "Orders" in the sidebar
+export async function refreshPendingBadge() {
+  if (!isStaffRole(currentUser?.role)) return;
+  try {
+    const res = await fetch("/api/orders/pending-count");
+    if (!res.ok) return;
+    const { count } = await res.json();
+
+    const link = document.querySelector('.nav-item[data-nav="orders"] a');
+    if (!link) return;
+    let badge = document.getElementById("nav-pending-badge");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.id = "nav-pending-badge";
+      badge.className = "nav-badge";
+      badge.title = "Customer requests waiting for confirmation";
+      link.appendChild(badge);
+    }
+    badge.textContent = count;
+    badge.hidden = !count;
+  } catch {
+    /* the badge is a convenience; ignore network hiccups */
+  }
+}
+
 // Bubbo, the assistant mascot (loaded after the page so it never blocks rendering)
 const loadBubbo = () => import("./bubbo.js").catch((err) => console.warn("Bubbo failed to load:", err));
+
+async function initSession() {
+  if (document.body.dataset.access === "public") return;
+
+  try {
+    const res = await fetch("/api/auth/me");
+    if (res.status === 401) return location.replace("/");
+    if (!res.ok) throw new Error(`Session check failed (${res.status})`);
+    currentUser = (await res.json()).user;
+  } catch (err) {
+    console.warn(err);
+    return; // offline or server hiccup: leave the page as it is
+  }
+
+  document.body.dataset.role = currentUser.role; // lets auth.css hide controls a role can't use
+  mountUserChip(currentUser);
+  if (currentUser.role === "superadmin") mountStaffNav();
+  if (currentUser.role === "customer") loadBubbo(); // Bubbo is a customer helper; not shown to staff or admins
+
+  if (isStaffRole(currentUser.role)) {
+    refreshPendingBadge();
+    setInterval(() => {
+      if (!document.hidden) refreshPendingBadge();
+    }, 30000);
+  }
+}
+
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", loadBubbo);
+  document.addEventListener("DOMContentLoaded", initSession);
 } else {
-  loadBubbo();
+  initSession();
 }

@@ -16,6 +16,18 @@ async function loadDashboard() {
     const activeOrders = orders.filter(o => o.status === "Pending" || o.status === "Processing" || o.status === "Ready").length;
     const completedOrders = orders.filter(o => o.status === "Completed").length;
 
+    // Customer requests waiting for the admin's decision
+    const awaiting = orders.filter(o => o.status === "Pending Confirmation").length;
+    document.getElementById("pending-banner")?.remove();
+    if (awaiting > 0) {
+      const banner = document.createElement("a");
+      banner.id = "pending-banner";
+      banner.className = "pending-banner";
+      banner.href = "orders.html?status=pending-confirmation";
+      banner.innerHTML = `<strong>${awaiting}</strong><span>customer order${awaiting === 1 ? "" : "s"} waiting for your confirmation</span><span class="pending-banner-cta">Review</span>`;
+      document.querySelector(".stats-grid")?.before(banner);
+    }
+
     // Update UI Cards
     document.getElementById("stat-revenue").textContent = formatCurrency(totalRevenue);
     document.getElementById("stat-active-orders").textContent = activeOrders;

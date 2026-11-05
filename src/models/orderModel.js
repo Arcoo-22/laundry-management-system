@@ -1,228 +1,147 @@
-import db, { withTransaction } from "../config/database.js";
-import { httpError } from "../utils/http.js";
+import Order from "../models/orderModel.js";
+import OrderItem from "../models/orderItemModel.js";
+import Payment from "../models/paymentModel.js";
+import User from "../models/userModel.js";
+import { cleanText, isId, normalizeDelivery, round2, sendError, validateCustomer } from "../utils/http.js";
 
-const normalizeDelivery = (val) => {
-  if (!val) return "Pickup";
-  const str = String(val).trim().toLowerCase();
-  if (str.includes("delivery") || str.includes("drop")) return "Delivery";
-  return "Pickup";
+// Customer-only endpoints. Every query is scoped to req.user.customer_id, so a customer
+// can never read or change somebody else's data by guessing ids.
+const customerId = (req, res) => {
+  if (!req.user.customer_id) {
+    res.status(409).json({ success: false, message: "Your account isn't linked to a customer record yet. Please contact the shop." });
+    return null;
+  }
+  return req.user.customer_id;
 };
 
-const normalizeStatus = (val) => {
-  if (!val) return "Pending";
-  const str = String(val).trim().toLowerCase();
-  const map = {
-    pending: "Pending",
-    processing: "Processing",
-    ready: "Ready",
-    completed: "Completed",
-    cancelled: "Cancelled",
-    canceled: "Cancelled",
-  };
-  return map[str] || "Pending";
+const withBalance = (o) => {
+  const total = round2(o.total_amount || 0);
+  const paid = round2(o.total_paid || 0);
+  return { ...o, total_paid: paid, balance_remaining: Math.max(0, round2(total - paid)) };
 };
 
-const Order = {
-  getAll: () => {
-    return new Promise((resolve, reject) => {
-      db.query(
-        `SELECT o.*, c.full_name, s.service_name
-         FROM tbl_orders o
-         LEFT JOIN tbl_customers c ON o.customer_id = c.customer_id
-         LEFT JOIN tbl_services s ON o.service_id = s.service_id
-         ORDER BY o.order_id DESC`,
-        (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        }
-      );
-    });
+const portalController = {
+  getProfile: async (req, res) => {
+    try {
+      const id = customerId(req, res);
+      if (!id) return;
+      const profile = await User.getCustomerProfile(id);
+      return res.status(200).json({ success: true, profile });
+    } catch (error) {
+      return sendError(res, error, "Error loading your profile");
+    }
   },
 
-  getById: (id) => {
-    return new Promise((resolve, reject) => {
-      db.query(
-        `SELECT o.*, c.full_name, s.service_name
-         FROM tbl_orders o
-         LEFT JOIN tbl_customers c ON o.customer_id = c.customer_id
-         LEFT JOIN tbl_services s ON o.service_id = s.service_id
-         WHERE o.order_id = ?`,
-        [id],
-        (err, results) => {
-          if (err) return reject(err);
-          resolve(results && results.length ? results[0] : null);
-        }
-      );
-    });
+  updateProfile: async (req, res) => {
+    try {
+      const id = customerId(req, res);
+      if (!id) return;
+
+      const current = await User.getCustomerProfile(id);
+      // Email is the login, so it stays as is; the rest is validated with the same rules as the admin side
+      const { data, error } = validateCustomer({ ...req.body, email: current.email });
+      if (error) return res.status(400).json({ success: false, message: error });
+
+      await User.updateProfile(id, req.user.id, data);
+      return res.status(200).json({ success: true, message: "Profile updated.", profile: { ...data, customer_id: id } });
+    } catch (error) {
+      return sendError(res, error, "Error updating your profile");
+    }
   },
 
-  create: (orderData) => {
-    const { customer_id, service_id, delivery_methods } = orderData;
-    const normDelivery = normalizeDelivery(delivery_methods);
-
-    return new Promise((resolve, reject) => {
-      db.query(
-        "INSERT INTO tbl_orders (customer_id, service_id, delivery_methods) VALUES (?, ?, ?)",
-        [customer_id, service_id, normDelivery],
-        (err, results) => {
-          if (err) return reject(err);
-          if (!results || !results.insertId) {
-            return resolve(null);
-          }
-          resolve({ id: results.insertId, order_id: results.insertId, ...orderData, delivery_methods: normDelivery });
-        }
-      );
-    });
+  listOrders: async (req, res) => {
+    try {
+      const id = customerId(req, res);
+      if (!id) return;
+      const orders = (await Order.getByCustomer(id)).map(withBalance);
+      return res.status(200).json({ success: true, orders });
+    } catch (error) {
+      return sendError(res, error, "Error loading your orders");
+    }
   },
 
-  // Creates the order and, when no customer_id is given, the customer too - all or nothing.
-  // A customer with the same email (case-insensitive) is reused instead of duplicated.
-  createWithCustomer: ({ customer_id, customer, service_id, delivery_methods }) =>
-    withTransaction(async (conn) => {
-      const [services] = await conn.query("SELECT service_id FROM tbl_services WHERE service_id = ?", [service_id]);
-      if (!services.length) throw httpError(404, `Service ${service_id} not found`);
+  getOrder: async (req, res) => {
+    try {
+      const id = customerId(req, res);
+      if (!id) return;
+      if (!isId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid order id" });
 
-      let customerId = customer_id;
-      let customerCreated = false;
+      const order = await Order.getOwnedById(Number(req.params.id), id);
+      if (!order) return res.status(404).json({ success: false, message: "Order not found." });
 
-      if (customerId) {
-        const [rows] = await conn.query("SELECT customer_id FROM tbl_customers WHERE customer_id = ?", [customerId]);
-        if (!rows.length) throw httpError(404, `Customer ${customerId} not found`);
-      } else {
-        const [existing] = await conn.query(
-          "SELECT customer_id FROM tbl_customers WHERE LOWER(TRIM(email)) = LOWER(?) ORDER BY customer_id ASC LIMIT 1",
-          [customer.email]
-        );
-        if (existing.length) {
-          customerId = existing[0].customer_id;
-        } else {
-          const [created] = await conn.query(
-            "INSERT INTO tbl_customers (full_name, contact, email, address) VALUES (?, ?, ?, ?)",
-            [customer.full_name, customer.contact, customer.email, customer.address]
-          );
-          customerId = created.insertId;
-          customerCreated = true;
-        }
+      const [items, payments, totalPaid] = await Promise.all([
+        OrderItem.getByOrder(order.order_id),
+        Payment.getByOrderId(order.order_id).catch(() => []),
+        Payment.getTotalPaid(order.order_id).catch(() => 0),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        order: withBalance({ ...order, total_paid: totalPaid }),
+        items: (items || []).map(({ item_id, clothe_type, weight_in_kilo, subtotal }) => ({
+          item_id,
+          clothe_type,
+          weight_in_kilo,
+          subtotal,
+        })),
+        payments: (payments || []).map(({ payment_id, payment_mode, amount_paid, payment_date }) => ({
+          payment_id,
+          payment_mode,
+          amount_paid,
+          payment_date,
+        })),
+      });
+    } catch (error) {
+      return sendError(res, error, "Error loading the order");
+    }
+  },
+
+  createOrder: async (req, res) => {
+    try {
+      const id = customerId(req, res);
+      if (!id) return;
+
+      const { service_id, delivery_methods } = req.body || {};
+      if (!isId(service_id)) return res.status(400).json({ success: false, message: "Please choose a service." });
+
+      const delivery = normalizeDelivery(delivery_methods || "Pickup");
+      if (!delivery) return res.status(400).json({ success: false, message: "Choose Pickup or Delivery." });
+
+      const notes = cleanText(req.body?.customer_notes);
+      if (notes && notes.length > 500) {
+        return res.status(400).json({ success: false, message: "Notes must be 500 characters or fewer." });
       }
 
-      const delivery = normalizeDelivery(delivery_methods);
-      const [order] = await conn.query(
-        "INSERT INTO tbl_orders (customer_id, service_id, delivery_methods) VALUES (?, ?, ?)",
-        [customerId, service_id, delivery]
-      );
+      const result = await Order.createRequest({
+        customer_id: id,
+        service_id: Number(service_id),
+        delivery_methods: delivery,
+        customer_notes: notes,
+      });
 
-      return { order_id: order.insertId, customer_id: customerId, customer_created: customerCreated };
-    }),
-
-  updateStatus: (order_id, newStatus) => {
-    const normStatus = normalizeStatus(newStatus);
-    return new Promise((resolve, reject) => {
-      db.query(
-        "UPDATE tbl_orders SET status = ? WHERE order_id = ?",
-        [normStatus, order_id],
-        (err, results) => {
-          if (err) return reject(err);
-
-          if (results.affectedRows === 0) {
-            return resolve(null);
-          }
-
-          resolve({ success: true, order_id, status: normStatus });
-        }
-      );
-    });
+      return res.status(201).json({
+        success: true,
+        message: "Request sent! The shop will confirm your order soon.",
+        order_id: result.order_id,
+        status: result.status,
+      });
+    } catch (error) {
+      return sendError(res, error, "Error placing your order");
+    }
   },
 
-  getByStatus: (status) => {
-    const normStatus = normalizeStatus(status);
-    return new Promise((resolve, reject) => {
-      db.query(
-        `SELECT o.*, c.full_name, s.service_name
-         FROM tbl_orders o
-         LEFT JOIN tbl_customers c ON o.customer_id = c.customer_id
-         LEFT JOIN tbl_services s ON o.service_id = s.service_id
-         WHERE o.status = ?
-         ORDER BY o.order_id DESC`,
-        [normStatus],
-        (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        }
-      );
-    });
+  cancelOrder: async (req, res) => {
+    try {
+      const id = customerId(req, res);
+      if (!id) return;
+      if (!isId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid order id" });
+
+      const result = await Order.cancelRequest(Number(req.params.id), id);
+      return res.status(200).json({ success: true, message: `Order #${result.order_id} cancelled.`, status: result.status });
+    } catch (error) {
+      return sendError(res, error, "Error cancelling the order");
+    }
   },
-
-  getByName: (name) => {
-    return new Promise((resolve, reject) => {
-      db.query(
-        `SELECT o.*, c.full_name, s.service_name
-         FROM tbl_orders o
-         LEFT JOIN tbl_customers c ON o.customer_id = c.customer_id
-         LEFT JOIN tbl_services s ON o.service_id = s.service_id
-         WHERE LOWER(TRIM(c.full_name)) LIKE LOWER(CONCAT('%', ?, '%'))
-         ORDER BY o.order_id DESC`,
-        [name],
-        (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        }
-      );
-    });
-  },
-
-  getByDeliveryMethod: (deliveryMethod) => {
-    const normDelivery = normalizeDelivery(deliveryMethod);
-    return new Promise((resolve, reject) => {
-      db.query(
-        `SELECT o.*, c.full_name, s.service_name
-         FROM tbl_orders o
-         LEFT JOIN tbl_customers c ON o.customer_id = c.customer_id
-         LEFT JOIN tbl_services s ON o.service_id = s.service_id
-         WHERE o.delivery_methods = ?
-         ORDER BY o.order_id DESC`,
-        [normDelivery],
-        (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        }
-      );
-    });
-  },
-
-  updateDelivery: (order_id, delivery_methods) => {
-    const normDelivery = normalizeDelivery(delivery_methods);
-    return new Promise((resolve, reject) => {
-      db.query(
-        "UPDATE tbl_orders SET delivery_methods = ? WHERE order_id = ?",
-        [normDelivery, order_id],
-        (err, results) => {
-          if (err) return reject(err);
-
-          if (results.affectedRows === 0) {
-            return resolve(null);
-          }
-
-          resolve({ success: true, order_id, delivery_methods: normDelivery });
-        }
-      );
-    });
-  },
-
-  // Deleting an order removes its garment items. Orders with payments are protected.
-  delete: (id) =>
-    withTransaction(async (conn) => {
-      const [orders] = await conn.query("SELECT order_id FROM tbl_orders WHERE order_id = ? FOR UPDATE", [id]);
-      if (!orders.length) return { affectedRows: 0 };
-
-      const [[pay]] = await conn.query("SELECT COUNT(*) AS n FROM tbl_payments WHERE order_id = ?", [id]);
-      if (pay.n > 0) {
-        throw httpError(409, "This order has recorded payments and can't be deleted. Mark it as Cancelled instead.");
-      }
-
-      await conn.query("DELETE FROM tbl_order_items WHERE order_id = ?", [id]);
-      const [result] = await conn.query("DELETE FROM tbl_orders WHERE order_id = ?", [id]);
-      return result;
-    }),
 };
 
-export default Order;
+export default portalController;
