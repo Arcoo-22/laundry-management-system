@@ -42,7 +42,7 @@ const portalController = {
       const { data, error } = validateCustomer({ ...req.body, email: current.email });
       if (error) return res.status(400).json({ success: false, message: error });
 
-      await User.updateProfile(id, req.user.user_id, data);
+      await User.updateProfile(id, req.user.id, data);
       return res.status(200).json({ success: true, message: "Profile updated.", profile: { ...data, customer_id: id } });
     } catch (error) {
       return sendError(res, error, "Error updating your profile");
