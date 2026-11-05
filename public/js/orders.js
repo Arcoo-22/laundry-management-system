@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { printReceipt, canPrintReceipt } from "./receipt.js";
 import { formatCurrency, formatDate, renderOrderStatusBadge, renderDeliveryBadge, openModal, closeModal, initNavigation, showToast, escapeHtml, Icons, refreshPendingBadge } from "./ui.js";
 
 const AWAITING = "Pending Confirmation";
@@ -8,6 +9,7 @@ let ordersList = [];
 let customersList = [];
 let servicesList = [];
 let currentOrderDetails = null;
+let currentReceiptData = null;
 
 async function loadInitialData() {
   initNavigation("orders");
@@ -169,6 +171,7 @@ async function openOrderDetailsModal(orderId) {
     const order = res.order;
     const items = res.items || [];
     currentOrderDetails = order;
+    currentReceiptData = { order, items, payments: res.payments || [] };
 
     document.getElementById("details-order-title").textContent = `Order #${order.order_id} Details`;
     document.getElementById("details-cust-name").textContent = order.full_name || `Customer #${order.customer_id}`;
@@ -185,6 +188,7 @@ async function openOrderDetailsModal(orderId) {
     const canAddItems = order.status !== AWAITING && order.status !== REJECTED;
     // .btn sets its own display, so the hidden attribute would be ignored; use style instead
     document.getElementById("btn-open-add-items-from-details").style.display = canAddItems ? "" : "none";
+    document.getElementById("btn-print-receipt").style.display = canPrintReceipt(order) ? "" : "none";
 
     const tbody = document.getElementById("details-items-tbody");
     if (items.length === 0) {
@@ -389,6 +393,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Add items from inside details modal
+  document.getElementById("btn-print-receipt")?.addEventListener("click", () => {
+    if (currentReceiptData) printReceipt(currentReceiptData);
+  });
+
   document.getElementById("btn-open-add-items-from-details")?.addEventListener("click", () => {
     if (currentOrderDetails) {
       openAddItemsModal(currentOrderDetails.order_id);

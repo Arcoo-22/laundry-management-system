@@ -1,5 +1,6 @@
 // Customer portal: my orders, send a new request, profile and password.
 import { api } from "./api.js";
+import { printReceipt, canPrintReceipt } from "./receipt.js";
 import {
   formatCurrency,
   formatDate,
@@ -10,6 +11,7 @@ import {
   initNavigation,
   showToast,
   escapeHtml,
+  currentUser,
 } from "./ui.js";
 
 const AWAITING = "Pending Confirmation";
@@ -31,6 +33,7 @@ let orders = [];
 let services = [];
 let profile = null;
 let openOrderId = null;
+let openReceiptData = null;
 let navReady = false;
 
 const $ = (id) => document.getElementById(id);
@@ -103,6 +106,7 @@ async function openOrder(id) {
     const res = await api.portal.order(id);
     const o = res.order;
     openOrderId = o.order_id;
+    openReceiptData = { order: o, items: res.items || [], payments: res.payments || [] };
 
     $("order-modal-title").textContent = `Order #${o.order_id}`;
     $("order-status-line").innerHTML = `${renderOrderStatusBadge(o.status)} <span style="color: var(--text-muted); font-size: 0.85rem;">Placed ${formatDate(o.created_at)}</span>`;
@@ -138,6 +142,7 @@ async function openOrder(id) {
 
     // Customers can withdraw a request only until the shop has looked at it
     $("btn-cancel-request").style.display = o.status === AWAITING ? "" : "none";
+    $("btn-print-receipt").style.display = canPrintReceipt(o) ? "" : "none";
 
     openModal("modal-order");
   } catch (err) {
@@ -192,6 +197,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.addEventListener("hashchange", showView);
 
   $("btn-cancel-request").addEventListener("click", cancelOpenOrder);
+  $("btn-print-receipt").addEventListener("click", () => {
+    if (openReceiptData) printReceipt({ ...openReceiptData, customerName: currentUser?.full_name });
+  });
   $("new-service").addEventListener("change", updateNewOrderHints);
   $("new-delivery").addEventListener("change", updateNewOrderHints);
 
