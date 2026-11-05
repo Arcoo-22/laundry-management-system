@@ -81,8 +81,11 @@ const Payment = {
       if (!orders.length) throw httpError(404, `Order ${order_id} not found.`);
 
       const order = orders[0];
-      if (order.status === "Cancelled") {
-        throw httpError(409, "Can't record a payment for a cancelled order.");
+      if (order.status === "Cancelled" || order.status === "Rejected") {
+        throw httpError(409, `Can't record a payment for a ${order.status.toLowerCase()} order.`);
+      }
+      if (order.status === "Pending Confirmation") {
+        throw httpError(409, "Confirm this customer request before recording a payment.");
       }
 
       const total = round2(order.total_amount);

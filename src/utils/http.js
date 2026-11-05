@@ -12,6 +12,7 @@ const lookup = (pairs) => {
 export const normalizeOrderStatus = lookup([
   ["pending", "Pending"], ["processing", "Processing"], ["ready", "Ready"],
   ["completed", "Completed"], ["cancelled", "Cancelled"], ["canceled", "Cancelled"],
+  ["pending confirmation", "Pending Confirmation"], ["rejected", "Rejected"],
 ]);
 export const normalizeDelivery = lookup([
   ["pickup", "Pickup"], ["pick up", "Pickup"], ["pick-up", "Pickup"],
@@ -26,7 +27,11 @@ export const normalizePaymentStatus = lookup([
   ["fully paid", "Fully Paid"], ["paid", "Fully Paid"], ["completed", "Fully Paid"],
 ]);
 
+// Statuses the admin can pick from the status dropdown
 export const ORDER_STATUSES = ["Pending", "Processing", "Ready", "Completed", "Cancelled"];
+// Set only by the confirm / reject / customer-cancel actions, never by the dropdown
+export const AWAITING_STATUS = "Pending Confirmation";
+export const REJECTED_STATUS = "Rejected";
 export const DELIVERY_METHODS = ["Pickup", "Delivery"];
 export const PAYMENT_MODES = ["Cash", "GCash", "Maya", "Bank Transfer"];
 export const PAYMENT_STATUSES = ["Unpaid", "Partially Paid", "Fully Paid"];
@@ -60,6 +65,19 @@ export const validateCustomer = (body = {}) => {
 
   return { data: { full_name, contact, email, address } };
 };
+
+// Account passwords (customers choose their own)
+export const PASSWORD_MIN = 8;
+export const validatePassword = (password) => {
+  if (typeof password !== "string" || password.length < PASSWORD_MIN) {
+    return `Password must be at least ${PASSWORD_MIN} characters`;
+  }
+  if (password.length > 100) return "Password must be 100 characters or fewer";
+  return null;
+};
+
+// Phone numbers compared by digits only ("0917 123 4567" equals "09171234567")
+export const digitsOnly = (v) => String(v ?? "").replace(/\D/g, "");
 
 // Turn thrown errors into a consistent JSON response (no raw SQL leaking to clients)
 export function sendError(res, error, fallbackMessage, conflictMessage) {

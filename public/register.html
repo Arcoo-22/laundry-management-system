@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create account | Bubbly Laundry</title>
+  <script>try{var t=localStorage.getItem("laundry-theme");if(!t&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/auth.css">
+</head>
+<body data-access="public">
+  <main class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="brand-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="14" r="6"/><circle cx="18" cy="7" r="3"/><path d="M6.5 12a3 3 0 0 1 2-1.5"/></svg></div>
+        <div class="brand-text"><div class="brand-title">Bubbly</div><div class="brand-sub">Laundry</div></div>
+      </div>
+      <h1 class="auth-title">Create your account</h1>
+      <p class="auth-sub">Send laundry requests online and follow each order from start to finish.</p>
+      <div class="form-error" id="auth-error" role="alert" hidden></div>
+      <form id="form-register" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="reg-name">Full name</label>
+          <input class="form-input" id="reg-name" type="text" autocomplete="name" maxlength="100" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="reg-contact">Phone number</label>
+            <input class="form-input" id="reg-contact" type="tel" autocomplete="tel" maxlength="20" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="reg-email">Email</label>
+            <input class="form-input" id="reg-email" type="email" autocomplete="email" maxlength="100" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-address">Address</label>
+          <input class="form-input" id="reg-address" type="text" autocomplete="street-address" maxlength="255" required>
+          <div class="form-hint">Used when you choose delivery.</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="reg-password">Password</label>
+            <input class="form-input" id="reg-password" type="password" autocomplete="new-password" minlength="8" required>
+            <div class="form-hint">At least 8 characters.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="reg-confirm">Confirm password</label>
+            <input class="form-input" id="reg-confirm" type="password" autocomplete="new-password" required>
+          </div>
+        </div>
+        <button class="btn btn-primary" type="submit" id="auth-submit">Create account</button>
+      </form>
+      <p class="auth-switch">Already have an account? <a href="login.html">Sign in</a></p>
+    </div>
+  </main>
+  <script type="module" src="js/auth-pages.js"></script>
+</body>
+</html>

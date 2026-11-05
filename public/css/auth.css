@@ -1,0 +1,165 @@
+/* Login, registration, customer portal, and the new admin bits (loaded after styles.css) */
+
+/* ---- New order statuses ---- */
+.badge-awaiting { background-color: #ffe4cc; color: #b4430c; }
+.badge-rejected { background-color: var(--danger-light); color: var(--danger-text); }
+:root[data-theme="dark"] .badge-awaiting { background-color: rgba(251, 146, 60, 0.2); color: #fdba74; }
+
+/* ---- Sidebar: signed-in user and sign out ---- */
+.nav-item a { position: relative; }
+.nav-badge {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.4;
+  text-align: center;
+}
+.nav-badge[hidden] { display: none; }
+
+.user-chip {
+  margin: 0 14px 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--sidebar-hover);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+}
+.user-chip-name { font-weight: 800; color: var(--text-main); font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-chip-role { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 8px; }
+.user-chip .btn { width: 100%; justify-content: center; }
+
+/* ---- Admin: banner for requests waiting on you ---- */
+.pending-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding: 14px 20px;
+  border-radius: var(--radius-md);
+  background: #ffe4cc;
+  color: #7a3408;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+}
+.pending-banner strong { font-family: "Fredoka", sans-serif; font-size: 1.25rem; }
+.pending-banner .pending-banner-cta { margin-left: auto; font-weight: 800; text-decoration: underline; }
+:root[data-theme="dark"] .pending-banner { background: rgba(251, 146, 60, 0.18); color: #fdba74; }
+
+/* ---- Admin orders table extras ---- */
+.chip-online {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--info-light);
+  color: var(--info-text);
+  font-size: 0.7rem;
+  font-weight: 800;
+  vertical-align: middle;
+}
+.row-note { margin-top: 2px; max-width: 240px; font-size: 0.78rem; font-weight: 600; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-wide { grid-column: 1 / -1; }
+.detail-wide .detail-value { font-weight: 600; white-space: pre-wrap; }
+
+/* ---- Login / register ---- */
+.auth-shell {
+  position: relative;
+  z-index: 1;
+  flex: 1;            /* the page body is a flex row, so without this the card hugs the left edge */
+  width: 100%;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+}
+.auth-card {
+  width: 100%;
+  max-width: 500px;   /* same width on sign in and sign up */
+  padding: 36px 34px 30px;
+  border-radius: var(--radius-lg);
+  background: var(--modal-bg);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow-xl);
+}
+.auth-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.auth-brand .brand-icon { flex: none; }
+.auth-title { font-family: "Fredoka", sans-serif; font-size: 1.75rem; font-weight: 600; color: var(--text-main); margin: 0 0 4px; }
+.auth-sub { margin: 0 0 24px; color: var(--text-muted); font-weight: 600; font-size: 0.92rem; }
+.auth-card .btn-primary { width: 100%; justify-content: center; padding: 12px 20px; }
+.auth-switch { margin: 20px 0 0; text-align: center; font-size: 0.9rem; font-weight: 600; color: var(--text-muted); }
+.auth-switch a { color: var(--primary); font-weight: 800; text-decoration: none; }
+.auth-switch a:hover { text-decoration: underline; }
+.form-error {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-light);
+  color: var(--danger-text);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+.form-error[hidden] { display: none; }
+.form-hint { margin-top: 5px; font-size: 0.78rem; font-weight: 600; color: var(--text-muted); }
+
+/* ---- Customer portal ---- */
+.portal-view[hidden] { display: none; }
+.portal-note {
+  margin-bottom: 20px;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  background: var(--info-light);
+  color: var(--info-text);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.portal-narrow { max-width: 620px; }
+.status-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.status-explain {
+  margin: 14px 0 18px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--row-bg);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.status-explain.is-rejected { background: var(--danger-light); color: var(--danger-text); }
+.balance-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 0 0 20px; }
+.balance-grid > div { padding: 12px 14px; border-radius: var(--radius-sm); background: var(--row-bg); }
+.service-pick-desc { margin-top: 6px; font-size: 0.82rem; font-weight: 600; color: var(--text-muted); min-height: 1.2em; }
+.btn-danger-outline { color: var(--danger-text); border-color: var(--danger); }
+
+@media (max-width: 600px) {
+  .auth-card { padding: 28px 22px 24px; }
+  .balance-grid { grid-template-columns: 1fr; }
+}
+
+/* Collapsed sidebar (same breakpoint as styles.css): keep only the sign-out button */
+@media (max-width: 900px) {
+  .user-chip { margin: 0 8px 10px; padding: 8px; }
+  .user-chip-name, .user-chip-role { display: none; }
+  .user-chip .btn { padding: 8px 4px; font-size: 0.7rem; }
+  .nav-badge { position: absolute; top: 4px; right: 6px; margin: 0; min-width: 18px; padding: 0 5px; font-size: 0.66rem; }
+}
+
+/* Classes above set their own display, which would otherwise beat the hidden attribute */
+[hidden] { display: none !important; }
+
+/* Dropdown lists: the browser draws the open list itself on a white background, so
+   the light text used in dark mode vanished until hovered. Give the options real colors. */
+select option, select optgroup { background-color: #ffffff; color: #1e2a4a; }
+:root[data-theme="dark"] select option,
+:root[data-theme="dark"] select optgroup { background-color: #1c2042; color: #eef2ff; }
+
+/* Sign in / sign up: let the field outline reach the card's content edges, level with the labels and the button */
+.auth-card .form-input { border-color: var(--border-soft); box-shadow: none; }
+.auth-card .form-input:focus { border-color: var(--lilac); box-shadow: 0 0 0 5px rgba(167, 139, 250, 0.22); }
+
+/* Regular staff: hide controls the server would refuse anyway (the API enforces it; this just avoids dead buttons) */
+body[data-role="staff"] #btn-open-create-service { display: none; }
+
+.user-chip .btn + .btn { margin-top: 6px; }

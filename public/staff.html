@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Staff accounts | Bubbly Laundry</title>
+  <script>try{var t=localStorage.getItem("laundry-theme");if(!t&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/auth.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="14" r="6"/><circle cx="18" cy="7" r="3"/><path d="M6.5 12a3 3 0 0 1 2-1.5"/></svg></div>
+      <div class="brand-text">
+        <div class="brand-title">Bubbly</div>
+        <div class="brand-sub">Laundry</div>
+      </div>
+    </div>
+    <ul class="sidebar-menu">
+        <li class="nav-item" data-nav="dashboard">
+          <a href="index.html"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg></span><span class="nav-label">Dashboard</span></a>
+        </li>
+        <li class="nav-item" data-nav="orders">
+          <a href="orders.html"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9h18l-2 11H5z"/><path d="M8 9l3-5M16 9l-3-5"/><path d="M10 13v4M14 13v4"/></svg></span><span class="nav-label">Orders</span></a>
+        </li>
+        <li class="nav-item" data-nav="customers">
+          <a href="customers.html"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 3-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14c2.6 0 4.5 1.8 4.5 4.5"/></svg></span><span class="nav-label">Customers</span></a>
+        </li>
+        <li class="nav-item" data-nav="services">
+          <a href="services.html"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/><path d="M19 3v4M17 5h4"/></svg></span><span class="nav-label">Services</span></a>
+        </li>
+        <li class="nav-item" data-nav="payments">
+          <a href="payments.html"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="4"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1.2"/></svg></span><span class="nav-label">Payments</span></a>
+        </li>
+    </ul>
+    <div class="sidebar-footer">
+      <span>v1.0</span>
+      <a class="api-link" href="api-docs" target="_blank" rel="noopener">API Docs</a>
+    </div>
+  </aside>
+
+  <div class="main-wrapper">
+    <header class="top-bar">
+      <h1 class="page-title">Staff accounts</h1>
+      <div class="top-actions"><button class="btn btn-primary" id="btn-open-create-staff"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Add account</button></div>
+    </header>
+    <main class="content-area">
+      <div class="portal-note">Staff can run daily work (orders, customers, payments) but can't delete records or change prices. Admins can do both. Superadmin accounts are created only from the server terminal and don't appear as editable here.</div>
+      <section class="card">
+        <div class="card-header">
+          <div class="card-heading"><h2 class="card-title">Accounts</h2><span class="card-count" id="staff-count"></span></div>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last sign-in</th><th>Actions</th></tr></thead>
+            <tbody id="staff-tbody"><tr><td colspan="6" class="loading-cell">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-overlay" id="modal-create-staff">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Add account</h3>
+        <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <form id="form-create-staff">
+        <div class="modal-body">
+          <div class="form-group"><label class="form-label" for="new-staff-name">Full name *</label><input type="text" class="form-input" id="new-staff-name" maxlength="100" required></div>
+          <div class="form-group"><label class="form-label" for="new-staff-email">Email *</label><input type="email" class="form-input" id="new-staff-email" maxlength="100" required></div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label" for="new-staff-role">Role *</label><select class="form-select" id="new-staff-role"><option value="staff">Staff</option><option value="admin">Admin</option></select></div>
+            <div class="form-group"><label class="form-label" for="new-staff-password">Temporary password *</label><input type="password" class="form-input" id="new-staff-password" autocomplete="new-password" minlength="8" required></div>
+          </div>
+          <div class="form-hint">Tell them the staff sign-in address and this password. They can change it after signing in.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Create account</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-edit-staff">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Edit account</h3>
+        <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <form id="form-edit-staff">
+        <div class="modal-body">
+          <input type="hidden" id="edit-staff-id">
+          <div class="form-group"><label class="form-label" for="edit-staff-name">Full name *</label><input type="text" class="form-input" id="edit-staff-name" maxlength="100" required></div>
+          <div class="form-group"><label class="form-label" for="edit-staff-role">Role *</label><select class="form-select" id="edit-staff-role"><option value="staff">Staff</option><option value="admin">Admin</option></select></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-reset-staff">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="reset-staff-title">Reset password</h3>
+        <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <form id="form-reset-staff">
+        <div class="modal-body">
+          <input type="hidden" id="reset-staff-id">
+          <div class="form-group"><label class="form-label" for="reset-staff-password">New password *</label><input type="password" class="form-input" id="reset-staff-password" autocomplete="new-password" minlength="8" required><div class="form-hint">At least 8 characters. They'll be signed out everywhere and must use this one.</div></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Set password</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script type="module" src="js/staff.js"></script>
+</body>
+</html>

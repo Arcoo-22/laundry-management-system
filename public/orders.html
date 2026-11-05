@@ -6,6 +6,7 @@
   <title>Orders | Bubbly Laundry</title>
   <script>try{var t=localStorage.getItem("laundry-theme");if(!t&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/auth.css">
 </head>
 <body>
   <aside class="sidebar">
@@ -50,7 +51,7 @@
           <div class="card-heading"><h2 class="card-title">All Orders</h2><span class="card-count" id="order-count"></span></div>
           <div class="filters-bar">
             <div class="search-box"><span class="search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></span><input type="text" id="order-search-name" placeholder="Search name or order #"></div>
-            <select class="select-filter" id="filter-order-status"><option value="">All Statuses</option><option value="Pending">Pending</option><option value="Processing">Processing</option><option value="Ready">Ready</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select>
+            <select class="select-filter" id="filter-order-status"><option value="">All Statuses</option><option value="Pending Confirmation">Pending Confirmation</option><option value="Pending">Pending</option><option value="Processing">Processing</option><option value="Ready">Ready</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option><option value="Rejected">Rejected</option></select>
             <select class="select-filter" id="filter-order-delivery"><option value="">All Methods</option><option value="Pickup">Pickup</option><option value="Delivery">Delivery</option></select>
             <button class="btn btn-outline btn-sm" id="btn-reset-filters">Reset</button>
           </div>
@@ -87,6 +88,27 @@
       </form>
     </div>
   </div>
+  <div class="modal-overlay" id="modal-reject-order">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="reject-modal-title">Reject order request</h3>
+        <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <form id="form-reject-order">
+        <div class="modal-body">
+          <input type="hidden" id="reject-order-id">
+          <div class="form-group">
+            <label class="form-label" for="reject-reason">Reason (the customer will see this)</label>
+            <textarea class="form-textarea form-input" id="reject-reason" rows="3" maxlength="255" required placeholder="e.g. We're fully booked for pickups this week."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-close>Keep as pending</button>
+          <button type="submit" class="btn btn-danger">Reject order</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <div class="modal-overlay" id="modal-update-status">
     <div class="modal-card">
       <div class="modal-header">
@@ -117,6 +139,8 @@
             <div><span class="detail-label">Service</span><div class="detail-value" id="details-service-name">-</div></div>
             <div><span class="detail-label">Total</span><div class="detail-value" id="details-totals">-</div></div>
             <div><span class="detail-label">Status</span><div class="detail-value" id="details-status-badge">-</div></div>
+            <div class="detail-wide" id="details-notes-wrap" hidden><span class="detail-label">Customer notes</span><div class="detail-value" id="details-notes"></div></div>
+            <div class="detail-wide" id="details-reason-wrap" hidden><span class="detail-label">Reason for rejection</span><div class="detail-value" id="details-reason"></div></div>
           </div>
           <div class="table-responsive">
             <table class="data-table">

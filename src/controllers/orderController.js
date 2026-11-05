@@ -9,6 +9,8 @@ import {
   validateCustomer,
   ORDER_STATUSES,
   DELIVERY_METHODS,
+  AWAITING_STATUS,
+  REJECTED_STATUS,
 } from "../utils/http.js";
 
 const badStatus = (res) =>
@@ -182,6 +184,23 @@ const orderController = {
       // Reject unknown values instead of silently turning them into "Pending"
       const status = normalizeOrderStatus(rawStatus);
       if (!status) return badStatus(res);
+
+      // Customer requests move only through Confirm / Reject, so the admin always makes that call
+      if (existingOrder.status === AWAITING_STATUS) {
+        return res.status(409).json({
+          success: false,
+          message: "This order is a customer request waiting for your decision. Confirm or reject it first.",
+        });
+      }
+      if (existingOrder.status === REJECTED_STATUS) {
+        return res.status(409).json({ success: false, message: "A rejected order can't change status." });
+      }
+      if (status === AWAITING_STATUS || status === REJECTED_STATUS) {
+        return res.status(409).json({
+          success: false,
+          message: `"${status}" is set by the Confirm / Reject buttons on customer requests, not by the status dropdown.`,
+        });
+      }
 
       await Order.updateStatus(id, status);
 

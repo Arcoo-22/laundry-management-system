@@ -1,5 +1,8 @@
 import { api } from "./api.js";
-import { formatCurrency, formatDate, renderOrderStatusBadge, renderDeliveryBadge, openModal, closeModal, initNavigation, showToast, escapeHtml, Icons } from "./ui.js";
+import { formatCurrency, formatDate, renderOrderStatusBadge, renderDeliveryBadge, openModal, closeModal, initNavigation, showToast, escapeHtml, Icons, refreshPendingBadge } from "./ui.js";
+
+const AWAITING = "Pending Confirmation";
+const REJECTED = "Rejected";
 
 let ordersList = [];
 let customersList = [];
@@ -16,12 +19,13 @@ async function loadInitialData() {
       api.services.list().catch(() => []),
     ]);
 
-    ordersList = orders;
+    ordersList = [...orders].sort((a, b) => (b.status === AWAITING) - (a.status === AWAITING));
     customersList = customers;
     servicesList = services;
 
     populateDropdowns();
-    renderOrders(ordersList);
+    applyFilters();
+    refreshPendingBadge();
   } catch (err) {
     console.error("Error loading orders data:", err);
     showToast("Failed to load orders: " + err.message, "error");
@@ -60,8 +64,8 @@ function renderOrders(list) {
 
   tbody.innerHTML = list.map(o => `
     <tr>
-      <td><strong>#${o.order_id}</strong></td>
-      <td><strong>${escapeHtml(o.full_name || "Customer #" + o.customer_id)}</strong></td>
+      <td><strong>#${o.order_id}</strong>${o.order_source === "Customer" ? `<span class="chip-online" title="Placed by the customer online">Online</span>` : ""}</td>
+      <td><strong>${escapeHtml(o.full_name || "Customer #" + o.customer_id)}</strong>${o.status === AWAITING && o.customer_notes ? `<div class="row-note" title="${escapeHtml(o.customer_notes)}">${escapeHtml(o.customer_notes)}</div>` : ""}</td>
       <td>${escapeHtml(o.service_name || "Service #" + o.service_id)}</td>
       <td>${parseFloat(o.total_weight || 0).toFixed(2)} kg</td>
       <td><strong>${formatCurrency(o.total_amount)}</strong></td>
@@ -72,10 +76,12 @@ function renderOrders(list) {
         </select>
       </td>
       <td>
-        <span class="btn-open-status" data-id="${o.order_id}" data-status="${o.status}" style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Click to update status">
+        ${o.status === AWAITING || o.status === REJECTED
+          ? renderOrderStatusBadge(o.status)
+          : `<span class="btn-open-status" data-id="${o.order_id}" data-status="${o.status}" style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Click to update status">
           ${renderOrderStatusBadge(o.status)}
           <span style="color: var(--text-muted); font-size: 0.8rem;">${Icons.edit}</span>
-        </span>
+        </span>`}
       </td>
       <td style="color: var(--text-muted); font-size: 0.85rem;">${formatDate(o.created_at)}</td>
       <td>
@@ -83,9 +89,12 @@ function renderOrders(list) {
           <button class="btn btn-outline btn-sm btn-view-order" data-id="${o.order_id}" style="display:inline-flex;align-items:center;gap:4px;">
             ${Icons.eye} Details
           </button>
-          <button class="btn btn-primary btn-sm btn-add-items" data-id="${o.order_id}">
-            + Items
-          </button>
+          ${o.status === AWAITING
+            ? `<button class="btn btn-success btn-sm btn-confirm-order" data-id="${o.order_id}">Confirm</button>
+               <button class="btn btn-danger btn-sm btn-reject-order" data-id="${o.order_id}">Reject</button>`
+            : o.status === REJECTED
+              ? ""
+              : `<button class="btn btn-primary btn-sm btn-add-items" data-id="${o.order_id}">+ Items</button>`}
         </div>
       </td>
     </tr>
@@ -101,6 +110,30 @@ function attachRowListeners() {
 
   document.querySelectorAll(".btn-add-items").forEach(btn => {
     btn.addEventListener("click", () => openAddItemsModal(btn.dataset.id));
+  });
+
+  document.querySelectorAll(".btn-confirm-order").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const res = await api.orders.confirm(btn.dataset.id);
+        showToast(res.message || `Order #${btn.dataset.id} confirmed`, "success");
+        await loadInitialData();
+      } catch (err) {
+        showToast(err.message, "error");
+        btn.disabled = false;
+        loadInitialData(); // someone else may have already decided; show the latest
+      }
+    });
+  });
+
+  document.querySelectorAll(".btn-reject-order").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.getElementById("reject-order-id").value = btn.dataset.id;
+      document.getElementById("reject-modal-title").textContent = `Reject order #${btn.dataset.id}`;
+      document.getElementById("reject-reason").value = "";
+      openModal("modal-reject-order");
+    });
   });
 
   document.querySelectorAll(".btn-open-status").forEach(badge => {
@@ -143,12 +176,22 @@ async function openOrderDetailsModal(orderId) {
     document.getElementById("details-totals").textContent = `${parseFloat(order.total_weight || 0).toFixed(2)} kg — ${formatCurrency(order.total_amount)}`;
     document.getElementById("details-status-badge").innerHTML = `${renderOrderStatusBadge(order.status)} ${renderDeliveryBadge(order.delivery_methods)}`;
 
+    const setExtra = (wrapId, valueId, text) => {
+      document.getElementById(wrapId).hidden = !text;
+      document.getElementById(valueId).textContent = text || "";
+    };
+    setExtra("details-notes-wrap", "details-notes", order.customer_notes);
+    setExtra("details-reason-wrap", "details-reason", order.status === REJECTED ? order.rejection_reason : "");
+    const canAddItems = order.status !== AWAITING && order.status !== REJECTED;
+    // .btn sets its own display, so the hidden attribute would be ignored; use style instead
+    document.getElementById("btn-open-add-items-from-details").style.display = canAddItems ? "" : "none";
+
     const tbody = document.getElementById("details-items-tbody");
     if (items.length === 0) {
       tbody.innerHTML = `
         <tr>
           <td colspan="4" style="text-align: center; padding: 24px; color: var(--text-muted);">
-            No garment items recorded yet for this order. Click "+ Add Items" to add clothes.
+            ${order.status === AWAITING ? "Confirm this request first, then weigh the laundry and add its items." : "No garment items recorded yet for this order. Click \"+ Add Items\" to add clothes."}
           </td>
         </tr>
       `;
@@ -216,6 +259,10 @@ function applyFilters() {
 
 // Event Listeners
 document.addEventListener("DOMContentLoaded", () => {
+  // The dashboard banner links here with ?status=pending-confirmation
+  if (new URLSearchParams(location.search).get("status") === "pending-confirmation") {
+    document.getElementById("filter-order-status").value = AWAITING;
+  }
   loadInitialData();
 
   // Create Order Modal
@@ -250,6 +297,21 @@ document.addEventListener("DOMContentLoaded", () => {
       if (res.order_id) {
         openAddItemsModal(res.order_id);
       }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  // Reject Order Submit
+  document.getElementById("form-reject-order")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const orderId = document.getElementById("reject-order-id").value;
+    const reason = document.getElementById("reject-reason").value.trim();
+    try {
+      const res = await api.orders.reject(orderId, reason);
+      showToast(res.message || `Order #${orderId} rejected`, "success");
+      closeModal("modal-reject-order");
+      await loadInitialData();
     } catch (err) {
       showToast(err.message, "error");
     }

@@ -5,7 +5,7 @@ import { httpError, round2, cleanText } from "../utils/http.js";
 const MAX_ITEM_WEIGHT = 999.99;
 const MAX_ORDER_WEIGHT = 9999.99;
 const MAX_MONEY = 99999999.99;
-const LOCKED_STATUSES = ["Cancelled", "Completed"];
+const LOCKED_STATUSES = ["Cancelled", "Completed", "Rejected", "Pending Confirmation"];
 
 // Validates one item payload and returns the cleaned values
 const parseItem = (item, pricePerKilo) => {
@@ -26,7 +26,12 @@ const parseItem = (item, pricePerKilo) => {
 
 const assertEditable = (status) => {
   if (LOCKED_STATUSES.includes(status)) {
-    throw httpError(409, `Items can't be changed on a ${status.toLowerCase()} order.`);
+    throw httpError(
+      409,
+      status === "Pending Confirmation"
+        ? "Confirm this customer request before adding items."
+        : `Items can't be changed on a ${status.toLowerCase()} order.`
+    );
   }
 };
 

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Orders | Bubbly Laundry</title>
+  <script>try{var t=localStorage.getItem("laundry-theme");if(!t&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/auth.css">
+</head>
+<body data-access="customer">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="14" r="6"/><circle cx="18" cy="7" r="3"/><path d="M6.5 12a3 3 0 0 1 2-1.5"/></svg></div>
+      <div class="brand-text">
+        <div class="brand-title">Bubbly</div>
+        <div class="brand-sub">Laundry</div>
+      </div>
+    </div>
+    <ul class="sidebar-menu">
+      <li class="nav-item" data-nav="orders">
+        <a href="#orders"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9h18l-2 11H5z"/><path d="M8 9l3-5M16 9l-3-5"/><path d="M10 13v4M14 13v4"/></svg></span><span class="nav-label">My orders</span></a>
+      </li>
+      <li class="nav-item" data-nav="new">
+        <a href="#new"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg></span><span class="nav-label">New order</span></a>
+      </li>
+      <li class="nav-item" data-nav="profile">
+        <a href="#profile"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg></span><span class="nav-label">Profile</span></a>
+      </li>
+    </ul>
+  </aside>
+
+  <div class="main-wrapper">
+    <header class="top-bar">
+      <h1 class="page-title" id="page-title">My orders</h1>
+      <div class="top-actions"><a class="btn btn-primary" href="#new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> New order</a></div>
+    </header>
+
+    <main class="content-area">
+      <!-- My orders -->
+      <section class="portal-view" id="view-orders">
+        <div class="portal-note" id="orders-note" hidden></div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-heading"><h2 class="card-title">Your orders</h2><span class="card-count" id="order-count"></span></div>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead><tr><th>Order</th><th>Service</th><th>Delivery</th><th>Status</th><th>Total</th><th>Balance</th><th>Placed</th><th></th></tr></thead>
+              <tbody id="orders-tbody"><tr><td colspan="8" class="loading-cell">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- New order -->
+      <section class="portal-view" id="view-new" hidden>
+        <div class="card portal-narrow">
+          <div class="card-header"><div class="card-heading"><h2 class="card-title">Send a laundry request</h2></div></div>
+          <div class="card-body">
+            <p class="form-hint" style="margin: 0 0 18px;">The shop confirms every request before it starts. We weigh your laundry on arrival, so the final price is set then.</p>
+            <form id="form-new-order">
+              <div class="form-group">
+                <label class="form-label" for="new-service">Service</label>
+                <select class="form-select" id="new-service" required></select>
+                <div class="service-pick-desc" id="new-service-desc"></div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="new-delivery">Pickup or delivery</label>
+                <select class="form-select" id="new-delivery">
+                  <option value="Pickup">Pickup: I'll bring and collect it</option>
+                  <option value="Delivery">Delivery: bring it to my address</option>
+                </select>
+                <div class="form-hint" id="new-address-hint"></div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="new-notes">Notes for the shop (optional)</label>
+                <textarea class="form-textarea form-input" id="new-notes" rows="3" maxlength="500" placeholder="e.g. Separate whites, delicate fabrics, preferred pickup time"></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary" id="btn-send-request">Send request</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- Profile -->
+      <section class="portal-view" id="view-profile" hidden>
+        <div class="card portal-narrow" style="margin-bottom: 24px;">
+          <div class="card-header"><div class="card-heading"><h2 class="card-title">Your details</h2></div></div>
+          <div class="card-body">
+            <form id="form-profile">
+              <div class="form-group"><label class="form-label" for="prof-email">Email</label><input class="form-input" id="prof-email" type="email" disabled><div class="form-hint">This is your sign-in email. Ask the shop if it needs to change.</div></div>
+              <div class="form-group"><label class="form-label" for="prof-name">Full name</label><input class="form-input" id="prof-name" type="text" maxlength="100" required></div>
+              <div class="form-group"><label class="form-label" for="prof-contact">Phone number</label><input class="form-input" id="prof-contact" type="tel" maxlength="20" required></div>
+              <div class="form-group"><label class="form-label" for="prof-address">Address</label><input class="form-input" id="prof-address" type="text" maxlength="255" required></div>
+              <button type="submit" class="btn btn-primary">Save changes</button>
+            </form>
+          </div>
+        </div>
+        <div class="card portal-narrow">
+          <div class="card-header"><div class="card-heading"><h2 class="card-title">Change password</h2></div></div>
+          <div class="card-body">
+            <form id="form-password">
+              <div class="form-group"><label class="form-label" for="pw-current">Current password</label><input class="form-input" id="pw-current" type="password" autocomplete="current-password" required></div>
+              <div class="form-group"><label class="form-label" for="pw-new">New password</label><input class="form-input" id="pw-new" type="password" autocomplete="new-password" minlength="8" required><div class="form-hint">At least 8 characters.</div></div>
+              <div class="form-group"><label class="form-label" for="pw-confirm">Confirm new password</label><input class="form-input" id="pw-confirm" type="password" autocomplete="new-password" required></div>
+              <button type="submit" class="btn btn-primary">Change password</button>
+            </form>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Order details -->
+  <div class="modal-overlay" id="modal-order">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="order-modal-title">Order</h3>
+        <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="status-line" id="order-status-line"></div>
+        <div class="status-explain" id="order-status-explain"></div>
+        <div class="details-grid">
+          <div><span class="detail-label">Service</span><div class="detail-value" id="od-service">-</div></div>
+          <div><span class="detail-label">Delivery</span><div class="detail-value" id="od-delivery">-</div></div>
+          <div class="detail-wide" id="od-notes-wrap" hidden><span class="detail-label">Your notes</span><div class="detail-value" id="od-notes"></div></div>
+        </div>
+        <div class="balance-grid" id="od-balance" hidden>
+          <div><span class="detail-label">Total</span><div class="detail-value" id="od-total">-</div></div>
+          <div><span class="detail-label">Paid</span><div class="detail-value" id="od-paid">-</div></div>
+          <div><span class="detail-label">Balance</span><div class="detail-value" id="od-balance-left">-</div></div>
+        </div>
+        <div id="od-items-wrap" hidden>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead><tr><th>Item</th><th>Weight</th><th>Subtotal</th></tr></thead>
+              <tbody id="od-items"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="od-payments-wrap" hidden style="margin-top: 16px;">
+          <span class="detail-label">Payments</span>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead><tr><th>Date</th><th>Method</th><th>Amount</th></tr></thead>
+              <tbody id="od-payments"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" data-close>Close</button>
+        <button type="button" class="btn btn-outline btn-danger-outline" id="btn-cancel-request" style="display: none;">Cancel request</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/portal.js"></script>
+</body>
+</html>
